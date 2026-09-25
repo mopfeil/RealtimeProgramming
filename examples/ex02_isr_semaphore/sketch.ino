@@ -3,8 +3,8 @@
 
 const uint8_t PIN_BUTTON   = 2;   // INT0, falling edge
 const uint8_t PIN_LED      = 12;
-const uint8_t PIN_DBG_ISR  = 10;  // high while the ISR runs
-const uint8_t PIN_DBG_TASK = 11;  // high while the handler task runs
+const uint8_t PIN_DBG_ISR  = 10;  // high while the ISR runs (set by hand)
+const uint8_t PIN_DBG_TASK = 11;  // task trace pin, driven by the patched scheduler
 
 SemaphoreHandle_t buttonSem;
 
@@ -19,10 +19,8 @@ void buttonISR() {
 void buttonTask(void *pv) {
   for (;;) {
     xSemaphoreTake(buttonSem, portMAX_DELAY);   // blocked until the ISR gives
-    digitalWrite(PIN_DBG_TASK, HIGH);
     digitalWrite(PIN_LED, !digitalRead(PIN_LED));
     vTaskDelay(pdMS_TO_TICKS(5));               // simulated work
-    digitalWrite(PIN_DBG_TASK, LOW);
   }
 }
 
@@ -33,7 +31,9 @@ void setup() {
   pinMode(PIN_DBG_TASK, OUTPUT);
 
   buttonSem = xSemaphoreCreateBinary();
-  xTaskCreate(buttonTask, "Button", 128, NULL, 2, NULL);
+  TaskHandle_t hButton;
+  xTaskCreate(buttonTask, "Button", 128, NULL, 2, &hButton);
+  vTaskSetApplicationTaskTag(hButton, (TaskHookFunction_t)PIN_DBG_TASK);
   attachInterrupt(digitalPinToInterrupt(PIN_BUTTON), buttonISR, FALLING);
 }
 

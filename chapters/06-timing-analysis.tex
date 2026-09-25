@@ -12,7 +12,27 @@
 
 \scriptonly{%
 The reference project (interrupt-triggered semaphore) uses pin~2 as button input (INT0), pin~13 and pin~12 for the two LEDs, and pins~10 and~11 as debug outputs. The logic analyzer is connected to D0--D7.
-\emph{TODO: describe exactly what the patch to the library does and how the waveform is exported and opened in the viewer.}
+}
+
+\begin{frame}[fragile]{The patched library: scheduler-driven trace pins}
+  \begin{itemize}
+    \item The trace hooks \texttt{traceTASK\_SWITCHED\_IN()} and \texttt{traceTASK\_SWITCHED\_OUT()} are defined in \texttt{Arduino\_FreeRTOS.h}.
+    \item Each task carries a \emph{application tag}: the pin number, set with \texttt{vTaskSetApplicationTaskTag()}.
+    \item Scheduler switches task \emph{in} (Running) $\Rightarrow$ pin HIGH. Task switched \emph{out} (Ready or Blocked) $\Rightarrow$ pin LOW.
+  \end{itemize}
+\begin{lstlisting}
+#define traceTASK_SWITCHED_IN()  \
+    analogWrite((int)pxCurrentTCB->pxTaskTag, 255)
+#define traceTASK_SWITCHED_OUT() \
+    analogWrite((int)pxCurrentTCB->pxTaskTag, 0)
+
+pinMode(10, OUTPUT);
+vTaskSetApplicationTaskTag(handle, (TaskHookFunction_t)10);
+\end{lstlisting}
+\end{frame}
+
+\scriptonly{%
+The pin therefore shows exactly the time a task is \emph{Running}, as decided by the scheduler, and not merely the time between two statements in the task code. Preemption is visible as a gap in the pulse of the lower-priority task while the pulse of the higher-priority task is high. The application tag must be set before the scheduler starts or at least before the task is first switched in. Two things to keep in mind: tasks without a tag have the tag \texttt{NULL}, so the macros drive pin~0 for them (this includes the idle task, and pin~0 is the serial RX pin on the Uno); and the pin has to be configured with \texttt{pinMode()} as output.
 }
 
 \begin{frame}{What to read from the waveform}

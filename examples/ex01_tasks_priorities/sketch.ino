@@ -1,6 +1,9 @@
 #include <Arduino_FreeRTOS.h>
 
-// Debug pins for the logic analyzer (D0 = pin 10, D1 = pin 11)
+// Trace pins for the logic analyzer (D0 = pin 10, D1 = pin 11).
+// The patched library sets the pin stored in the task's application tag
+// HIGH when the scheduler switches the task in (Running) and LOW when it
+// switches it out (Ready/Blocked) -- see traceTASK_SWITCHED_IN/OUT.
 const uint8_t PIN_TASK_A = 10;
 const uint8_t PIN_TASK_B = 11;
 
@@ -14,9 +17,7 @@ static void burn(uint16_t ms) {
 void taskA(void *pv) {
   TickType_t last = xTaskGetTickCount();
   for (;;) {
-    digitalWrite(PIN_TASK_A, HIGH);
     burn(20);
-    digitalWrite(PIN_TASK_A, LOW);
     vTaskDelayUntil(&last, pdMS_TO_TICKS(100));
   }
 }
@@ -25,18 +26,19 @@ void taskA(void *pv) {
 void taskB(void *pv) {
   TickType_t last = xTaskGetTickCount();
   for (;;) {
-    digitalWrite(PIN_TASK_B, HIGH);
     burn(30);
-    digitalWrite(PIN_TASK_B, LOW);
     vTaskDelayUntil(&last, pdMS_TO_TICKS(60));
   }
 }
 
 void setup() {
+  TaskHandle_t hA, hB;
   pinMode(PIN_TASK_A, OUTPUT);
   pinMode(PIN_TASK_B, OUTPUT);
-  xTaskCreate(taskA, "A", 128, NULL, 2, NULL);
-  xTaskCreate(taskB, "B", 128, NULL, 1, NULL);
+  xTaskCreate(taskA, "A", 128, NULL, 2, &hA);
+  xTaskCreate(taskB, "B", 128, NULL, 1, &hB);
+  vTaskSetApplicationTaskTag(hA, (TaskHookFunction_t)PIN_TASK_A);
+  vTaskSetApplicationTaskTag(hB, (TaskHookFunction_t)PIN_TASK_B);
 }
 
 void loop() { }

@@ -66,9 +66,9 @@ Internally, FreeRTOS keeps one ready list per priority level (\texttt{pxReadyTas
 
 \subsection{Example}
 \begin{frame}[fragile]{Wokwi example 1: two tasks, two priorities}
-  \wokwiexample{ex01_tasks_priorities}{Two periodic tasks with debug pins}{lst:ex01}
+  \wokwiexample{ex01_tasks_priorities}{Two periodic tasks, traced by the scheduler}{lst:ex01}
 \end{frame}
 
 \scriptonly{%
-Example~\ref{lst:ex01} creates two periodic tasks. Each task sets its debug pin high while it executes and low when it blocks. Attach a logic analyzer to pins 10 and 11 (see Chapter~\ref{sec:timing}) to see when each task runs and how the higher-priority task preempts the other.
+Example~\ref{lst:ex01} creates two periodic tasks. The patched scheduler sets the trace pin of a task high while it is Running and low otherwise. Attach a logic analyzer to pins 10 and 11 (see Chapter~\ref{sec:timing}) to see when each task runs and how the higher-priority task preempts the other.
 }
