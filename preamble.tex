@@ -1,0 +1,31 @@
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,calc}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{url}
+
+\lstdefinestyle{arduino}{
+  language=C++,
+  basicstyle=\ttfamily\footnotesize,
+  keywordstyle=\color{blue!70!black},
+  commentstyle=\color{green!40!black},
+  numbers=left, numberstyle=\tiny\color{gray},
+  breaklines=true, columns=fullflexible, keepspaces=true,
+  frame=single, rulecolor=\color{gray!50},
+}
+\lstset{style=arduino}
+
+% Text that appears only in the script (long-form explanation)
+\newcommand{\scriptonly}[1]{\iftoggle{slides}{}{#1}}
+% Text that appears only on slides
+\newcommand{\slidesonly}[1]{\iftoggle{slides}{#1}{}}
+
+% Wokwi example: include sketch from examples/<dir>/sketch.ino
+\newcommand{\wokwiexample}[3]{% dir, caption, label
+  \lstinputlisting[caption={#2},label={#3}]{examples/#1/sketch.ino}%
+}

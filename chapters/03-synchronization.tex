@@ -1,0 +1,43 @@
+\section{Synchronization}
+
+\subsection{Semaphores}
+\begin{frame}{Semaphores: signalling between tasks and ISRs}
+  \begin{itemize}
+    \item A \emph{binary semaphore} signals an event: one side \texttt{Give}s, the other \texttt{Take}s.
+    \item The waiting task is \emph{Blocked}, uses no CPU, and becomes Ready when the semaphore is given.
+    \item ISRs use \texttt{xSemaphoreGiveFromISR()} and defer the real work to a task (``deferred interrupt processing'').
+    \item \emph{Counting semaphores} count events or manage a pool of resources.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}[fragile]{Wokwi example 2: ISR $\rightarrow$ semaphore $\rightarrow$ task}
+  \wokwiexample{ex02_isr_semaphore}{Button interrupt wakes a task}{lst:ex02}
+\end{frame}
+
+\scriptonly{%
+Keep the ISR short: it gives the semaphore and requests a context switch if a higher-priority task was woken. The latency from the button edge to the first instruction of the task is exactly the kind of timing we measure in Chapter~\ref{sec:timing}.
+}
+
+\subsection{Mutexes and priority inversion}
+\begin{frame}{Semaphore vs.\ mutex}
+  \begin{itemize}
+    \item \textbf{Semaphore}: signalling. Different tasks give and take.
+    \item \textbf{Mutex}: protects a shared resource. The same task takes and gives, always in this order.
+    \item Both are implemented on top of queues in FreeRTOS.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Priority inversion and inheritance}
+  \begin{itemize}
+    \item Low task $L$ holds a mutex, high task $H$ waits for it, medium task $M$ preempts $L$ $\Rightarrow$ $H$ is blocked by $M$ for an unbounded time.
+    \item \textbf{Priority inheritance}: $L$ temporarily inherits $H$'s priority while $H$ waits. FreeRTOS mutexes do this; binary semaphores do not.
+  \end{itemize}
+\end{frame}
+
+\subsection{Deadlocks}
+\begin{frame}{Deadlocks}
+  \begin{itemize}
+    \item Two or more tasks are blocked forever, each waiting for a resource held by another.
+    \item Avoidance: acquire resources in a fixed global order, use timeouts, keep critical sections short.
+  \end{itemize}
+\end{frame}

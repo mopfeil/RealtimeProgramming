@@ -1,0 +1,74 @@
+\section{Tasks in FreeRTOS}
+
+\subsection{Task functions}
+\begin{frame}{Task functions}
+  \begin{itemize}
+    \item A task is a C function: \texttt{void aTask(void *pvParameters)}.
+    \item It has an entry point and normally runs forever in an infinite loop.
+    \item It must never \texttt{return}. If it is no longer needed, delete it with \texttt{vTaskDelete()}.
+    \item Every task has its \emph{own stack} and its own copy of local variables.
+    \item One function can be used to create several tasks.
+  \end{itemize}
+\end{frame}
+
+\subsection{Creating tasks}
+\begin{frame}[fragile]{Creating tasks}
+\begin{lstlisting}
+BaseType_t xTaskCreate(
+    TaskFunction_t pvTaskCode,   // the task function
+    const char *pcName,          // name (debugging)
+    uint16_t usStackDepth,       // stack size in words
+    void *pvParameters,          // passed to the task
+    UBaseType_t uxPriority,      // 0 = lowest
+    TaskHandle_t *pxCreatedTask);// handle (may be NULL)
+\end{lstlisting}
+\end{frame}
+
+\subsection{Task states}
+\begin{frame}{Task states}
+  \begin{center}
+  \begin{tikzpicture}[node distance=2.6cm,>=Stealth,
+      st/.style={draw,rounded corners,minimum width=2.2cm,minimum height=0.9cm,fill=blue!10}]
+    \node[st] (ready) {Ready};
+    \node[st,right=of ready,fill=green!20] (run) {Running};
+    \node[st,below=1.4cm of $(ready)!0.5!(run)$] (block) {Blocked};
+    \draw[->] (ready) to[bend left=15] node[above]{\scriptsize scheduled} (run);
+    \draw[->] (run) to[bend left=15] node[below]{\scriptsize preempted} (ready);
+    \draw[->] (run) -- node[right]{\scriptsize wait/delay} (block);
+    \draw[->] (block) -- node[left]{\scriptsize event/timeout} (ready);
+  \end{tikzpicture}
+  \end{center}
+  Plus \emph{Suspended} (via \texttt{vTaskSuspend()}). Only Ready tasks compete for the CPU.
+\end{frame}
+
+\subsection{Priorities and the scheduler}
+\begin{frame}{Priority-based preemptive scheduling}
+  \begin{itemize}
+    \item Priorities $0 \dots$ \texttt{configMAX\_PRIORITIES}$-1$, higher number = higher priority.
+    \item The scheduler always runs the highest-priority Ready task.
+    \item Tasks with equal priority share the CPU in round-robin time slices.
+    \item Time slices are based on the \emph{tick} interrupt. On this AVR port the tick comes from the watchdog timer: 15\,ms.
+  \end{itemize}
+\end{frame}
+
+\scriptonly{%
+Internally, FreeRTOS keeps one ready list per priority level (\texttt{pxReadyTasksLists[]}). On a context switch, \texttt{vTaskSwitchContext()} walks down from the highest priority with a non-empty list and takes the next entry of that list. Because the list is circular, tasks of the same priority get equal shares. These few lines are the core of the scheduler; the rest of the kernel exists to keep them correct.
+}
+
+\subsection{Blocking and periodic tasks}
+\begin{frame}{Delaying: \texttt{vTaskDelay} vs.\ \texttt{vTaskDelayUntil}}
+  \begin{itemize}
+    \item \texttt{vTaskDelay(n)}: block for $n$ ticks \emph{after the call}. Period = execution time + delay $\Rightarrow$ drift.
+    \item \texttt{vTaskDelayUntil(\&last, n)}: block until \texttt{last + n}. Fixed period, independent of the execution time.
+    \item A blocked task uses no CPU. The \emph{idle task} runs when nothing else is Ready.
+  \end{itemize}
+\end{frame}
+
+\subsection{Example}
+\begin{frame}[fragile]{Wokwi example 1: two tasks, two priorities}
+  \wokwiexample{ex01_tasks_priorities}{Two periodic tasks with debug pins}{lst:ex01}
+\end{frame}
+
+\scriptonly{%
+Example~\ref{lst:ex01} creates two periodic tasks. Each task sets its debug pin high while it executes and low when it blocks. Attach a logic analyzer to pins 10 and 11 (see Chapter~\ref{sec:timing}) to see when each task runs and how the higher-priority task preempts the other.
+}

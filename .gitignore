@@ -1,0 +1,12 @@
+build/
+*.aux
+*.log
+*.out
+*.toc
+*.nav
+*.snm
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+RTP-Master24.pptx
+FreeRTOS.zip

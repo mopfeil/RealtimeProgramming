@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "author": "Realtime Programming",
+  "editor": "wokwi",
+  "parts": [
+    { "type": "wokwi-arduino-uno", "id": "uno", "top": 0, "left": 0, "attrs": {} },
+    { "type": "wokwi-logic-analyzer", "id": "logic1", "top": 260, "left": 40, "attrs": {} },
+    { "type": "wokwi-pushbutton", "id": "btn1", "top": -60, "left": 120, "attrs": { "color": "green" } },
+    { "type": "wokwi-led", "id": "led1", "top": -60, "left": 200, "attrs": { "color": "red" } }
+  ],
+  "connections": [ ["uno:10", "logic1:D0", "green", []], ["uno:11", "logic1:D1", "blue", []], ["uno:GND.1", "logic1:GND", "black", []], ["btn1:1.l", "uno:2", "green", []], ["btn1:2.l", "uno:GND.1", "black", []], ["led1:A", "uno:12", "red", []], ["led1:C", "uno:GND.1", "black", []] ],
+  "dependencies": {}
+}

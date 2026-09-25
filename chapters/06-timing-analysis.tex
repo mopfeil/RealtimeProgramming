@@ -1,0 +1,26 @@
+\section{Timing Analysis with the Logic Analyzer}
+\label{sec:timing}
+
+\begin{frame}{Measuring timing in Wokwi}
+  \begin{itemize}
+    \item The patched FreeRTOS library (\texttt{lib/FreeRTOS}) is used together with the Wokwi logic analyzer.
+    \item Digital pins carry debug signals: one pin per task, one per ISR.
+    \item The recorded signals are opened in a web-based waveform viewer.
+    \item Reference project: \url{https://wokwi.com/projects/446797093390429185}
+  \end{itemize}
+\end{frame}
+
+\scriptonly{%
+The reference project (interrupt-triggered semaphore) uses pin~2 as button input (INT0), pin~13 and pin~12 for the two LEDs, and pins~10 and~11 as debug outputs. The logic analyzer is connected to D0--D7.
+\emph{TODO: describe exactly what the patch to the library does and how the waveform is exported and opened in the viewer.}
+}
+
+\begin{frame}{What to read from the waveform}
+  \begin{itemize}
+    \item \textbf{Latency} $T_L$: event edge $\rightarrow$ start of task pin.
+    \item \textbf{Execution time} $T_V$: width of the task pulse.
+    \item \textbf{Reaction time} $T_R$: event edge $\rightarrow$ end of task pulse.
+    \item \textbf{Jitter}: variation of period and reaction time over many samples.
+    \item \textbf{Preemption}: the lower-priority pulse is interrupted by a higher-priority one.
+  \end{itemize}
+\end{frame}

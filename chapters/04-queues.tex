@@ -1,0 +1,28 @@
+\section{Queues}
+
+\begin{frame}{Queues}
+  \begin{itemize}
+    \item Primary means of inter-task communication, also usable from ISRs.
+    \item Items are \emph{copied} into the queue (deep copy), so the sender's variable can go out of scope.
+    \item For large items, queue a pointer instead.
+    \item Sending and receiving can block with a timeout: the blocked task is put on the queue's \emph{waiting to send/receive} list and does not consume CPU.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}[fragile]{Queue API}
+\begin{lstlisting}
+QueueHandle_t q = xQueueCreate(8, sizeof(int));
+
+xQueueSend(q, &value, pdMS_TO_TICKS(10));    // block <= 10 ms
+xQueueReceive(q, &value, portMAX_DELAY);     // block forever
+xQueueSendFromISR(q, &value, &woken);        // inside an ISR
+\end{lstlisting}
+\end{frame}
+
+\begin{frame}[fragile]{Wokwi example 3: producer and consumer}
+  \wokwiexample{ex03_queue}{Producer/consumer with a queue}{lst:ex03}
+\end{frame}
+
+\scriptonly{%
+The consumer blocks on the queue until an item arrives. If the consumer has the higher priority it runs immediately after each send. If the producer has the higher priority, the queue fills up and the producer blocks on a full queue. Use the logic analyzer to observe both cases.
+}

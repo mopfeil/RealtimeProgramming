@@ -1,0 +1,47 @@
+% ---------------------------------------------------------------------------
+% Realtime Programming -- single source for lecture script AND slides
+%
+% MODE SWITCH: choose ONE of the two lines below (or override on the command
+% line, see Makefile:  make script | make slides).
+% ---------------------------------------------------------------------------
+\providecommand{\lecturemode}{script}   % <-- change to: slides   (or script)
+
+\RequirePackage{etoolbox}
+\newtoggle{slides}
+\ifdefstring{\lecturemode}{slides}{\toggletrue{slides}}{\togglefalse{slides}}
+
+\iftoggle{slides}{%
+  \documentclass[aspectratio=169,10pt]{beamer}
+  \usetheme{metropolis}
+}{%
+  \documentclass[a4paper,11pt]{scrartcl}
+  \usepackage{beamerarticle}
+  \usepackage[margin=2.5cm]{geometry}
+}
+
+\input{preamble}
+
+\title{Realtime Programming}
+\subtitle{Lecture \iftoggle{slides}{slides}{script}}
+\author{Prof.\ Dr.\ Markus Pfeil}
+\date{\today}
+
+\begin{document}
+
+\iftoggle{slides}{%
+  \frame{\titlepage}%
+  \begin{frame}{Outline}\tableofcontents\end{frame}%
+}{%
+  \maketitle
+  \tableofcontents
+  \newpage
+}
+
+\input{chapters/01-introduction}
+\input{chapters/02-tasks}
+\input{chapters/03-synchronization}
+\input{chapters/04-queues}
+\input{chapters/05-scheduling}
+\input{chapters/06-timing-analysis}
+
+\end{document}

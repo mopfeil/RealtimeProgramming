@@ -1,0 +1,68 @@
+\section{Realtime Concepts}
+
+\subsection{Definitions}
+\begin{frame}{What is realtime?}
+  \begin{itemize}
+    \item Realtime computing: hardware and software systems subject to a \emph{realtime constraint}, i.e.\ an operational deadline from event to system response.
+    \item A computation \emph{fails} if it is not completed before its deadline.
+    \item The deadline must be met \emph{regardless of system load}.
+    \item Fast is not the same as realtime: a fast system without a guaranteed deadline is not a realtime system.
+  \end{itemize}
+\end{frame}
+
+\scriptonly{%
+Realtime does not mean ``as fast as possible''. It means that the correctness of a result depends on \emph{when} it is delivered, not only on its value. A braking controller that calculates the right brake force 200\,ms too late is wrong.
+}
+
+\subsection{Time conditions}
+\begin{frame}{Time conditions}
+  \begin{itemize}
+    \item \textbf{Exact time}: an action at $t_0$.
+    \item \textbf{Deadline}: no later than $t_{max}$.
+    \item \textbf{Earliest time}: not before $t_{min}$.
+    \item \textbf{Interval}: between $t_{min}$ and $t_{max}$.
+    \item \textbf{Periodic}: at $k\cdot t_s$, $k = 0,1,2,\dots$
+    \item \textbf{Non-periodic}: at $t_1, t_2, t_3,\dots$ (e.g.\ driven by external events)
+  \end{itemize}
+\end{frame}
+
+\subsection{Hard and soft realtime}
+\begin{frame}{Hard and soft realtime}
+  \begin{description}
+    \item[Hard] Time conditions must be met, otherwise catastrophic failure. A deviation is a serious error.
+    \item[Soft] Deadlines should be met, with some tolerance: averages, or a statistical distribution of response times.
+    \item[Concurrency] Realtime systems handle several inputs and outputs at the same time.
+  \end{description}
+\end{frame}
+
+\subsection{Processing time and load}
+\begin{frame}{Response time and load}
+  \begin{center}
+  \begin{tikzpicture}[x=1cm,y=1cm,>=Stealth]
+    \draw[->] (0,0) -- (10.5,0) node[right] {$t$};
+    \draw (0.5,-0.1) -- (0.5,0.5) node[above] {event $t_0$};
+    \draw[fill=blue!20] (2,0) rectangle (5,0.4);
+    \node at (3.5,0.7) {$T_V$ processing};
+    \draw[<->] (0.5,-0.5) -- (2,-0.5) node[midway,below] {$T_L$ latency};
+    \draw[<->] (0.5,-1.2) -- (5,-1.2) node[midway,below] {$T_R = T_L + T_V$ reaction time};
+    \draw[red,thick] (8,-0.1) -- (8,0.9) node[above] {$t_0 + T_{Z,max}$};
+  \end{tikzpicture}
+  \end{center}
+  \begin{align*}
+    T_V = \frac{N}{P}, \qquad \rho = \frac{T_V}{T_P} < 1
+  \end{align*}
+  Requirement: $T_R \le T_{Z,max}$.
+\end{frame}
+
+\scriptonly{%
+$N$ is the number of operations, $P$ the computing power in operations per second, $T_P$ the time between two requests of the same type. The utilisation $\rho = T_V/T_P$ must always be smaller than~1. Latency $T_L$ is the time the task waits before it starts, for example because another task or an interrupt is running. In a realtime system the \emph{maximum} of $T_R$ is what counts, not the average.
+}
+
+\subsection{Where to measure: WCET}
+\begin{frame}{Why measure timing?}
+  \begin{itemize}
+    \item Realtime guarantees need the \emph{worst-case execution time} (WCET) of every task.
+    \item The WCET can be analysed statically or measured externally.
+    \item In this lecture: toggle a GPIO pin at start and end of a code section and record it with a \textbf{logic analyzer} (Chapter~\ref{sec:timing}).
+  \end{itemize}
+\end{frame}

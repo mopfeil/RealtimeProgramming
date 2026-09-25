@@ -1,0 +1,36 @@
+\section{Scheduling and Schedulability}
+
+\subsection{Periodic tasks}
+\begin{frame}{Periodic tasks and processor demand}
+  Task $i$: period $T_i$, execution time $C_i$, implicit deadline $D_i = T_i$.
+  \[ U_i = \frac{C_i}{T_i}, \qquad U = \sum_i U_i \]
+  \begin{itemize}
+    \item Example: $T_1 = 200$\,ms, $C_1 = 100$\,ms $\Rightarrow$ 50\,\%; $T_2 = 100$\,ms, $C_2 = 50$\,ms $\Rightarrow$ 50\,\%.
+    \item Total 100\,\% is the theoretical maximum: no slack, no room for interrupts or overhead.
+  \end{itemize}
+\end{frame}
+
+\subsection{Rate monotonic}
+\begin{frame}{Rate Monotonic (RM)}
+  \begin{itemize}
+    \item Fixed priorities: the shorter the period, the higher the priority.
+    \item Sufficient schedulability test (Liu \& Layland):
+    \[ U \le n\left(2^{1/n} - 1\right) \xrightarrow{n\to\infty} \ln 2 \approx 69.3\,\% \]
+    \item Exact test: worst-case response time
+    \[ R_i = C_i + \sum_{j \in hp(i)} \left\lceil \frac{R_i}{T_j} \right\rceil C_j \]
+    (solve iteratively, schedulable if $R_i \le D_i$).
+  \end{itemize}
+\end{frame}
+
+\subsection{Earliest deadline first}
+\begin{frame}{Earliest Deadline First (EDF)}
+  \begin{itemize}
+    \item Dynamic priorities: the job with the nearest absolute deadline runs first.
+    \item For implicit deadlines: schedulable if and only if $U \le 1$.
+    \item Not directly supported by FreeRTOS (fixed priorities), but the FreeRTOS priority scheme maps naturally to RM.
+  \end{itemize}
+\end{frame}
+
+\scriptonly{%
+Exercise: implement the two-task example above on the Arduino, assign priorities according to RM, and verify the response times with the logic analyzer.
+}
