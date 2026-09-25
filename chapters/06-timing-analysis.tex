@@ -5,7 +5,7 @@
   \begin{itemize}
     \item The patched FreeRTOS library (\texttt{lib/FreeRTOS}) is used together with the Wokwi logic analyzer.
     \item Digital pins carry debug signals: one pin per task, one per ISR.
-    \item The recorded signals are opened in a web-based waveform viewer.
+    \item The recorded signals are opened in the web-based waveform viewer Surfer.
     \item Reference project: \url{https://wokwi.com/projects/446797093390429185}
   \end{itemize}
 \end{frame}
@@ -33,6 +33,18 @@ vTaskSetApplicationTaskTag(handle, (TaskHookFunction_t)10);
 
 \scriptonly{%
 The pin therefore shows exactly the time a task is \emph{Running}, as decided by the scheduler, and not merely the time between two statements in the task code. Preemption is visible as a gap in the pulse of the lower-priority task while the pulse of the higher-priority task is high. The application tag must be set before the scheduler starts or at least before the task is first switched in. Two things to keep in mind: tasks without a tag have the tag \texttt{NULL}, so the macros drive pin~0 for them (this includes the idle task, and pin~0 is the serial RX pin on the Uno); and the pin has to be configured with \texttt{pinMode()} as output.
+}
+
+\begin{frame}{Workflow: from Wokwi to Surfer}
+  \begin{enumerate}
+    \item Run the simulation in Wokwi with the logic analyzer connected. The capture is exported automatically as a waveform file (VCD).
+    \item Open \url{https://app.surfer-project.org/} in the browser and load the file.
+    \item Add the signals (one per task, one for the ISR) and use the cursors to measure the time between edges.
+  \end{enumerate}
+\end{frame}
+
+\scriptonly{%
+Surfer is a web-based waveform viewer that runs entirely in the browser. Zoom to the region of interest, place one cursor on the event edge and another on the edge of the task pin, and read off the time difference. This gives $T_L$, $T_V$ and $T_R$ from the previous definitions directly.
 }
 
 \begin{frame}{What to read from the waveform}
