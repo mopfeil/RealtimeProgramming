@@ -1,0 +1,91 @@
+\section{Run-Time Statistics}
+\label{sec:runtimestats}
+
+\subsection{Principle}
+\begin{frame}{Measuring CPU time inside the kernel}
+  \begin{itemize}
+    \item The logic analyzer shows timing from the \emph{outside}. FreeRTOS can also measure from the \emph{inside}.
+    \item On every context switch the kernel reads a fast counter and adds the elapsed time to the \texttt{ulRunTimeCounter} of the outgoing task.
+    \item Result: accumulated CPU time per task, including the idle task.
+    \item CPU load $= 1 - \dfrac{\Delta\,\text{run}_\text{IDLE}}{\Delta\,\text{total}}$, share of task $i = \dfrac{\Delta\,\text{run}_i}{\Delta\,\text{total}}$
+  \end{itemize}
+\end{frame}
+
+\scriptonly{%
+The counter must run much faster than the tick (FreeRTOS recommends 10 to 100 times the tick frequency). Otherwise a task that runs for less than one counter period is never charged, and the statistics are biased towards tasks that happen to be running when the counter increments. With a 16\,ms watchdog tick on the Uno this rules out the tick counter itself.
+}
+
+\begin{frame}[fragile]{Configuration (patched library)}
+\begin{lstlisting}
+/* lib/FreeRTOS/src/FreeRTOSConfig.h */
+#define configGENERATE_RUN_TIME_STATS           1
+#define portCONFIGURE_TIMER_FOR_RUN_TIME_STATS()          /* Timer0 already runs */
+#define portGET_RUN_TIME_COUNTER_VALUE()        ( ( uint32_t ) micros() )
+#define configUSE_STATS_FORMATTING_FUNCTIONS    1   /* vTaskGetRunTimeStats() */
+#define portLU_PRINTF_SPECIFIER_REQUIRED            /* %lu: int is 16 bit */
+\end{lstlisting}
+  \begin{itemize}
+    \item Time base: \texttt{micros()} (Timer0, 4\,\textmu s resolution, overflow after $\approx 71$\,min).
+    \item Cost: one \texttt{micros()} call per context switch, 4 bytes per TCB.
+  \end{itemize}
+\end{frame}
+
+\scriptonly{%
+The configuration is compiled into the library, not into the sketch: a \texttt{\#define} in the \texttt{.ino} file does not reach \texttt{tasks.c}. Therefore the switch lives in \texttt{FreeRTOSConfig.h} of the patched library and is active for all examples. The kernel does not protect against counter overflow; after about 71 minutes the counters are no longer meaningful.
+}
+
+\subsection{API}
+\begin{frame}{Reading the statistics}
+  \begin{description}
+    \item[\texttt{uxTaskGetSystemState(arr, n, \&total)}] fills one \texttt{TaskStatus\_t} per task: name, state, priority, \texttt{ulRunTimeCounter}, stack high-water mark. \texttt{total} = current counter value.
+    \item[\texttt{vTaskGetRunTimeStats(buf)}] formats the same data as a text table: absolute counter and percentage \emph{since boot}.
+    \item[\texttt{ulTaskGetIdleRunTimeCounter()}] idle time only.
+  \end{description}
+  \begin{itemize}
+    \item The counters only grow. For the \emph{current} load take two snapshots and use the differences.
+  \end{itemize}
+\end{frame}
+
+\scriptonly{%
+\texttt{vTaskGetRunTimeStats()} is convenient but has drawbacks on a small controller: it allocates a temporary \texttt{TaskStatus\_t} array on the heap, uses \texttt{sprintf()}, and rounds percentages down to whole numbers (tasks below 1\,\% are shown as \texttt{<1\%}). Because it divides by the total time since boot, a change in load shows up only slowly. Production code usually calls \texttt{uxTaskGetSystemState()} and evaluates the raw counters itself.
+}
+
+\subsection{Example}
+\begin{frame}[fragile]{Wokwi example 4: periodic tasks and a monitor}
+\iftoggle{slides}{%
+  \lstinputlisting[linerange={59-72},showstringspaces=false,caption={Monitor task (excerpt)}]{examples/ex04_runtime_stats/sketch.ino}%
+}{%
+  \wokwiexample{ex04_runtime_stats}{Run-time statistics of two periodic tasks}{lst:ex04}%
+}
+\end{frame}
+
+\scriptonly{%
+Example~\ref{lst:ex04} creates two periodic tasks with rate-monotonic priorities: A ($T_A = 5$ ticks, $C_A = 16$\,ms, priority~2) and B ($T_B = 10$ ticks, $C_B = 40$\,ms, priority~1). Both run the same task function; the parameters are passed in a \texttt{PeriodicTask} structure. The execution time is generated with \texttt{delayMicroseconds()}, which counts CPU cycles; time during which the task is preempted is therefore not counted, in contrast to the \texttt{millis()}-based loop in Example~\ref{lst:ex01}. At the end of each job the task checks whether it finished after its implicit deadline and counts a miss.
+
+The monitor task (priority~3) wakes every 2\,s, takes a snapshot with \texttt{uxTaskGetSystemState()}, and prints for each task the CPU time in the last window, the share in per cent, and the remaining stack. It then prints the built-in table of \texttt{vTaskGetRunTimeStats()} for comparison. The output appears in the Wokwi serial monitor; the trace pins of A and B are recorded by the logic analyzer as before.
+}
+
+\subsection{Exercise}
+\begin{frame}{Exercise: run-time statistics (1/2)}
+  Use Wokwi example 4 (\texttt{examples/ex04\_runtime\_stats}) with the patched library.
+  \begin{enumerate}
+    \item \textbf{Prediction.} Compute $U_A$, $U_B$, the total utilisation $U$ and the expected idle share. Measure the tick period in the waveform first (period of the A pin).
+    \item \textbf{Measurement.} Run the simulation for at least 10\,s. Compare the window table with your prediction. Which task besides A, B and IDLE uses CPU time, and why?
+    \item \textbf{Cross-check.} Measure the pulse widths of A and B in Surfer. Do they match \texttt{run[us]} divided by the number of jobs in the window?
+    \item \textbf{Built-in table.} Compare the window table with the output of \texttt{vTaskGetRunTimeStats()}. Explain the differences.
+  \end{enumerate}
+\end{frame}
+
+\begin{frame}{Exercise: run-time statistics (2/2)}
+  \begin{enumerate}
+    \setcounter{enumi}{4}
+    \item \textbf{Overload.} Increase $C_B$ in steps (60, 80, 100, 120, 130\,ms). For each step compute $U$, compare with the Liu \& Layland bound for $n=2$, and compute the worst-case response time $R_B$. Predict whether B misses deadlines, then check the miss counter and the idle share.
+    \item \textbf{Interference.} At $C_B = 120$\,ms, B may miss a deadline about once per monitor period although $R_B \le T_B$. Find the cause in the waveform and the table. How does the result change if the monitor runs at priority~0?
+    \item \textbf{Measurement error.} Replace \texttt{cpuBurn()} by the \texttt{millis()}-based \texttt{burn()} of example~1. What happens to B's run time, and why?
+    \item \textbf{Stack.} Use the stack column to choose the smallest safe stack size for each task.
+  \end{enumerate}
+\end{frame}
+
+\scriptonly{%
+Hints. The watchdog tick is nominally $2048 / 128\,\text{kHz} = 16$\,ms, so $T_A = 80$\,ms and $T_B = 160$\,ms. Because the periods are harmonic, rate monotonic can reach 100\,\% utilisation, beyond the Liu \& Layland bound of 82.8\,\%; the response-time analysis of Chapter~5 gives the exact answer. The monitor is not part of the task set used in the analysis, but at priority~3 it preempts both tasks while it formats and sends its output (with a 64-byte transmit buffer, \texttt{Serial.print()} busy-waits until the UART has sent the characters). Note that every measurement disturbs the system it measures, including the run-time counter itself, which costs one \texttt{micros()} call per context switch.
+}

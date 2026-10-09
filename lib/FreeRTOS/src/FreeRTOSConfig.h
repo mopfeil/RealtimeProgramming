@@ -98,6 +98,17 @@ to exclude the API function. */
 #define INCLUDE_xTaskGetCurrentTaskHandle       0
 #define INCLUDE_uxTaskGetStackHighWaterMark     1
 
+/* Run-time statistics (lecture patch): every context switch adds the time the
+outgoing task has been running to its ulRunTimeCounter. Time base is the Arduino
+micros() counter (Timer0, 4 us resolution, wraps after ~71 min). Timer0 is
+already running before the scheduler starts, so nothing has to be configured. */
+extern unsigned long micros( void );
+#define configGENERATE_RUN_TIME_STATS           1
+#define portCONFIGURE_TIMER_FOR_RUN_TIME_STATS()
+#define portGET_RUN_TIME_COUNTER_VALUE()        ( ( uint32_t ) micros() )
+#define configUSE_STATS_FORMATTING_FUNCTIONS    1
+#define portLU_PRINTF_SPECIFIER_REQUIRED        /* unsigned int is 16 bit on AVR */
+
 #define configMAX(a,b)  ({ __typeof__ (a) _a = (a); __typeof__ (b) _b = (b); _a > _b ? _a : _b; })
 #define configMIN(a,b)  ({ __typeof__ (a) _a = (a); __typeof__ (b) _b = (b); _a < _b ? _a : _b; })
 
