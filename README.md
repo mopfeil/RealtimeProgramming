@@ -24,7 +24,7 @@ Requires `pdflatex`, `latexmk`, `beamer`, and the `metropolis` beamer theme.
 
 Each example is an Arduino Uno project with a logic analyzer on D0/D1 (pins 10/11).
 The patched library drives one trace pin per task: `traceTASK_SWITCHED_IN/OUT` (in `Arduino_FreeRTOS.h`) set the pin stored in the task tag (`vTaskSetApplicationTaskTag`) HIGH when the task is switched in and LOW when it is switched out. Untagged tasks (e.g. idle) use tag NULL = pin 0.
-The patched library in `lib/FreeRTOS` must be added to the Wokwi project.
+The patched library in `lib/FreeRTOS` is uploaded to Wokwi and referenced in each `libraries.txt` as `FreeRTOS@wokwi:<id>`. After changing `lib/FreeRTOS`, upload it again (Library Manager → "+" → Upload a Library) and update the id in all `libraries.txt` files.
 Waveforms: Wokwi exports the logic analyzer capture automatically; open it in <https://app.surfer-project.org/>.
 Reference project: <https://wokwi.com/projects/446797093390429185>
 

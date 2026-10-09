@@ -1,1 +1,5 @@
-FreeRTOS
+# Wokwi Library List
+# See https://docs.wokwi.com/guides/libraries
+# Patched library from lib/FreeRTOS (uploaded in the reference project 446797093390429185)
+
+FreeRTOS@wokwi:591de97d74fbabbe0285bd90f225e84c635e5fa9
