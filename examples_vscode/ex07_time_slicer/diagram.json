@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "author": "Realtime Programming",
+  "editor": "wokwi",
+  "parts": [
+    { "type": "wokwi-arduino-uno", "id": "uno", "top": 0, "left": 0, "attrs": {} },
+    { "type": "wokwi-logic-analyzer", "id": "logic1", "top": 260, "left": 40, "attrs": {} },
+    { "type": "wokwi-dip-switch-8", "id": "sw1", "top": -90, "left": 120, "attrs": {} }
+  ],
+  "connections": [
+    ["uno:13", "logic1:D0", "green", []],
+    ["uno:12", "logic1:D1", "blue", []],
+    ["uno:11", "logic1:D2", "orange", []],
+    ["uno:10", "logic1:D3", "purple", []],
+    ["uno:GND.1", "logic1:GND", "black", []],
+    ["sw1:1a", "uno:2", "gray", []],
+    ["sw1:1b", "uno:GND.1", "black", []]
+  ],
+  "dependencies": {}
+}

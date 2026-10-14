@@ -1,0 +1,12 @@
+{
+  "folders": [
+    { "path": "ex01_tasks_priorities" },
+    { "path": "ex02_isr_semaphore" },
+    { "path": "ex03_queue" },
+    { "path": "ex04_runtime_stats" },
+    { "path": "ex07_time_slicer" }
+  ],
+  "extensions": {
+    "recommendations": ["wokwi.wokwi-vscode", "platformio.platformio-ide"]
+  }
+}

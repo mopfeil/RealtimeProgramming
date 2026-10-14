@@ -18,6 +18,7 @@ Requires `pdflatex`, `latexmk`, `beamer`, and the `metropolis` beamer theme.
 | `main.tex`, `preamble.tex` | Mode switch, common setup |
 | `chapters/` | Lecture content; `\scriptonly{}` / `\slidesonly{}` mark mode-specific text |
 | `examples/` | Wokwi projects (`sketch.ino`, `diagram.json`, `libraries.txt`), included in the text via `\wokwiexample`; `ex05_8051_*`, `ex06_8051_*`: EdSim51 assembler programs (`.asm`), included via `\edsimexample` |
+| `examples_vscode/` | Copies of the Wokwi examples as PlatformIO projects for the *Wokwi for VS Code* extension, with a tutorial in `examples_vscode/README.md` |
 | `lib/FreeRTOS/` | Patched Arduino FreeRTOS library used in the examples |
 
 ## Wokwi examples
@@ -27,6 +28,8 @@ The patched library drives one trace pin per task: `traceTASK_SWITCHED_IN/OUT` (
 The patched library in `lib/FreeRTOS` is uploaded to Wokwi and referenced in each `libraries.txt` as `FreeRTOS@wokwi:<id>`. After changing `lib/FreeRTOS`, upload it again (Library Manager → "+" → Upload a Library) and update the id in all `libraries.txt` files.
 Waveforms: Wokwi exports the logic analyzer capture automatically; open it in <https://app.surfer-project.org/>.
 Reference project: <https://wokwi.com/projects/446797093390429185>
+
+Without access to wokwi.com, use the copies in `examples_vscode/` (built locally with PlatformIO, simulated in VS Code); see `examples_vscode/README.md`.
 
 Examples:
 - `ex01`–`ex04`: FreeRTOS (tasks, ISR + semaphore, queue, run-time statistics)
@@ -45,4 +48,4 @@ That CPU has no timer, interrupts or input pins, so the subroutine `tick` emulat
 Paste the file into the editor, edit `NWORK` (4 = short work, 25 = long work), press *Assemble* and *Run* (speed 256 Hz or more).
 The console shows a tick timeline (example 5) or SETPOINT plus a nesting-depth bar (example 6).
 
-> Status: the Wokwi examples have not yet been run in the Wokwi simulator. The EdSim51 examples were checked with a cycle-accurate model of the used instructions, not yet in EdSim51 itself. The `*_sim8.asm` versions were run with the simulator's original assembler and CPU code (`asm.js`, `cpu.js`) under Node.js, not yet in the browser UI.
+> Status: the Wokwi examples have not yet been run in the Wokwi simulator. The `examples_vscode/` copies compile with PlatformIO (`pio run`, atmelavr), but have not yet been run in Wokwi for VS Code. The EdSim51 examples were checked with a cycle-accurate model of the used instructions, not yet in EdSim51 itself. The `*_sim8.asm` versions were run with the simulator's original assembler and CPU code (`asm.js`, `cpu.js`) under Node.js, not yet in the browser UI.
