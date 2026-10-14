@@ -30,8 +30,9 @@ Libraries replace `libraries.txt`:
   no upload to wokwi.com and no library id are needed.
 - `ex07_time_slicer` gets `TimerOne` from the PlatformIO registry.
 
-> The sketches and diagrams are duplicates. When you change an example in `../examples/`,
-> copy `sketch.ino` and `diagram.json` here as well (the LaTeX script includes the files from `../examples/`).
+> The sketches and diagrams are duplicates; `../examples/` is the master copy (the LaTeX script includes the files from there).
+> After changing an example there, run `./sync.sh` to copy `sketch.ino` and `diagram.json` here.
+> `./sync.sh --check` only lists differences (exit code 1 if any).
 
 ## One-time setup
 
