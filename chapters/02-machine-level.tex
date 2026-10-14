@@ -272,11 +272,36 @@ The AVR behaves in the same way with different names: the hardware pushes the PC
 The examples in this chapter are plain 8051 assembler and are not Wokwi projects: the effects are visible at the level of single instructions, stack bytes, and machine cycles, which EdSim51 shows directly. The Arduino Uno behaves the same way in principle (see the comparison table above). Both examples were checked with a cycle-accurate model of the instructions they use; the cycle numbers given below are computed from the 8051 instruction set and should be confirmed in EdSim51.
 }
 
+\begin{frame}{Is something wrong? Decide before you run}
+  \begin{itemize}
+    \item The errors in examples 5 and 6 are \alert{silent}: no crash, no message, the program keeps running. The symptoms appear late and far away from the cause.
+    \item Therefore write down first what a correct run must show, then compare:
+  \end{itemize}
+  \begin{center}\footnotesize
+  \begin{tabular}{@{}lll@{}}
+    \toprule
+    Invariant & Watch & Broken by \\
+    \midrule
+    ISR runs = elapsed time$/T$ & TICKS vs.\ time & lost ticks (ex.~5) \\
+    no overflow pending at ISR end & OVERRUN = 0 & $C > T$ (ex.~5) \\
+    background makes progress & main counter, LEDs & starvation (ex.~5) \\
+    SP returns to its base value & SP & nesting (ex.~6) \\
+    nesting depth $\le 1$ & DEPTH, MAXDEPTH & nesting (ex.~6) \\
+    data next to the stack unchanged & SETPOINT, output & stack overflow (ex.~6) \\
+    \bottomrule
+  \end{tabular}
+  \end{center}
+\end{frame}
+
+\scriptonly{%
+Both examples contain a design error that the hardware does not report. The 8051 has no counter for lost interrupt requests and no stack limit; the program simply continues with wrong timing or corrupted data. Whoever runs the examples without a clear expectation will see blinking LEDs and changing numbers and conclude that everything works. The table lists the invariants of a correct interrupt-driven system and the variables in the examples that make them observable. Each example file starts with a block ``How to spot the error'' that lists, for both switch positions, what to look at and when the first symptom appears.
+}
+
 \subsection{ISR longer than its period}
 \begin{frame}[fragile]{Example 5: ISR with long work}
   \begin{columns}[T]
     \begin{column}{0.62\textwidth}
-\lstinputlisting[style=asm51,basicstyle=\ttfamily\fontsize{6}{7}\selectfont,linerange={56-72},numbers=none]{examples/ex05_8051_isr_overrun/isr_overrun.asm}
+\lstinputlisting[style=asm51,basicstyle=\ttfamily\fontsize{6}{7}\selectfont,linerange={75-92},numbers=none]{examples/ex05_8051_isr_overrun/isr_overrun.asm}
     \end{column}
     \begin{column}{0.36\textwidth}
       \small
@@ -327,11 +352,30 @@ Example~\ref{lst:ex05} sets the stack pointer to 2Fh first, because the ISR uses
 The ISR needs 488 machine cycles, almost 2.5 periods. Hardware remembers only one pending overflow per source, so of the 2.44 overflows per ISR run, 1.44 are lost: the system silently runs at a lower rate than the one programmed. Between two ISR runs the CPU returns to the main program for exactly one instruction, because the 8051 always executes one instruction after \texttt{RETI} before it accepts the next interrupt. The main loop therefore advances by one instruction every 489\,\textmu s and appears frozen. Nothing in the hardware reports the problem; only the software check of TF0 at the end of the ISR makes it visible.
 }
 
+\begin{frame}{Example 5: how to spot the error in EdSim51}
+  \begin{center}\footnotesize
+  \begin{tabular}{@{}lll@{}}
+    \toprule
+    Watch & SW0 = 1 (short, correct) & SW0 = 0 (long, wrong) \\
+    \midrule
+    TICKS (20h) after 20\,ms & 63h (99): one per 200\,\textmu s & 29h (41): one per 489\,\textmu s \\
+    OVERRUN (21h) & stays 0 & +1 after \emph{every} ISR: 28h (40) \\
+    LEDs (MAINHI) & count up & never change \\
+    TF0 in the SFR panel & 0 when the ISR ends & already 1 when the ISR ends \\
+    \bottomrule
+  \end{tabular}
+  \end{center}
+  \begin{itemize}
+    \item \textbf{When:} the first ISR is still running when TF0 is set again (pending), and once more 200\,\textmu s later: lost. The first ISR ends after 488\,\textmu s with TF0 = 1, OVERRUN becomes 1.
+    \item \textbf{Where to look:} single-step over \texttt{JNB TF0,isrEnd}, the program's only error check. Without it, only the LEDs show that something is wrong, and only if you know they should count.
+  \end{itemize}
+\end{frame}
+
 \subsection{Resuming later: nested interrupts}
 \begin{frame}[fragile]{Example 6: let the next tick preempt the work?}
   \begin{columns}[T]
     \begin{column}{0.62\textwidth}
-\lstinputlisting[style=asm51,basicstyle=\ttfamily\fontsize{6}{7}\selectfont,linerange={53-55,67-82},numbers=none]{examples/ex06_8051_stack_overflow/stack_overflow.asm}
+\lstinputlisting[style=asm51,basicstyle=\ttfamily\fontsize{6}{7}\selectfont,linerange={70-72,85-101},numbers=none]{examples/ex06_8051_stack_overflow/stack_overflow.asm}
     \end{column}
     \begin{column}{0.36\textwidth}
       \small
@@ -381,19 +425,39 @@ In Example~\ref{lst:ex06} the ISR calls \texttt{allowNesting}, which consists of
   \end{columns}
 \end{frame}
 
+\begin{frame}{Example 6: how to spot the error in EdSim51}
+  \begin{center}\footnotesize
+  \begin{tabular}{@{}lll@{}}
+    \toprule
+    Watch & SW0 = 1 (short, correct) & SW0 = 0 (long, wrong) \\
+    \midrule
+    SP & stays $\le$ 36h & +7 every 200\,\textmu s, never comes back \\
+    DEPTH / MAXDEPTH & 1 / 1 & +1 every period \\
+    RAM 30h..7Fh & same few bytes change & filled level by level \\
+    LEDs (SETPOINT) & 4..7 on & 4..7 on, then dark, then all on \\
+    \bottomrule
+  \end{tabular}
+  \end{center}
+  \begin{itemize}
+    \item \textbf{2nd tick:} DEPTH = 2. This alone is the error: with $C > T$ the depth can only grow.
+    \item \textbf{Depth 7 (1.4\,ms):} a return address overwrites SETPOINT (60h). Nothing reports it, the ISR outputs garbage: the LEDs go dark.
+    \item \textbf{Depth 11 (2.2\,ms):} SP $\ge$ 78h, the guard stops the program, all LEDs on. Without the guard: wrong output first, crash later, if at all.
+  \end{itemize}
+\end{frame}
+
 \begin{frame}{Why ``resume later'' cannot work}
   \begin{itemize}
     \item Nested interrupts use one stack: \emph{last in, first out}. Level~1 can only resume after levels 2, 3, \dots\ have finished.
     \item With $C > T$ a new level always arrives first: the oldest work never resumes, the depth grows by one per period:
     \[ d(t) = \left\lfloor t/T \right\rfloor + 1, \qquad \text{stack}(t) = 7\,d(t)\ \text{bytes} \]
     \item Without nesting (example 5) ticks are lost, with nesting (example 6) the stack overflows. Both violate the load condition $\rho = C/T < 1$.
-    \item Resuming a job ``where it left off'' needs its own context, i.e.\ its own stack: a \emph{task}. An RTOS gives every task a stack and lets the scheduler decide what resumes (Chapter~\ref{sec:runtimestats} and earlier).
+    \item Resuming a job ``where it left off'' needs its own context, i.e.\ its own stack: a \emph{task}. An RTOS gives every task a stack and lets the scheduler decide what resumes (from Chapter~\ref{sec:tasks} on).
     \item ISRs must stay short: acknowledge, read data, signal a task (\texttt{xSemaphoreGiveFromISR}).
   \end{itemize}
 \end{frame}
 
 \scriptonly{%
-A task does not remove the load problem: if a periodic job needs more processor time than its period, no scheduler can meet all deadlines. But a task-based design makes the problem visible and controllable. A missed deadline can be counted (as in Example~4 of Chapter~\ref{sec:runtimestats}), lower-priority work is delayed in a defined way, and the stack of each task has a fixed, known size, independent of how often the event occurs.
+A task does not remove the load problem: if a periodic job needs more processor time than its period, no scheduler can meet all deadlines. But a task-based design makes the problem visible and controllable. A missed deadline can be counted (Example~4 in Chapter~\ref{sec:runtimestats} will show how), lower-priority work is delayed in a defined way, and the stack of each task has a fixed, known size, independent of how often the event occurs.
 }
 
 \begin{frame}{Stack overflow: causes, effects, detection}
@@ -404,6 +468,86 @@ A task does not remove the load problem: if a periodic job needs more processor 
     \item[Prevention] static stack analysis (next section).
   \end{description}
 \end{frame}
+
+\subsection{Without installation: the web simulator}
+\begin{frame}[fragile]{Examples 5 and 6 in the browser}
+  \begin{columns}[T]
+    \begin{column}{0.55\textwidth}
+\lstinputlisting[style=asm51,basicstyle=\ttfamily\fontsize{6}{7}\selectfont,linerange={116-130},numbers=none]{examples/ex05_8051_isr_overrun/isr_overrun_sim8.asm}
+    \end{column}
+    \begin{column}{0.43\textwidth}
+      \small
+      \begin{itemize}
+        \item \url{https://schweigi.github.io/assembler-simulator/}: 8-bit CPU, registers A--D, 256 bytes RAM, console at E8h--FFh, stack from E7h downwards.
+        \item No timer, no interrupts: subroutine \texttt{tick} emulates both, once per loop pass. Time = number of \texttt{tick} calls, period 10.
+        \item \texttt{INPROG} plays the 8051 ``interrupt in progress'' flag, \texttt{reti} clears it.
+        \item Files \texttt{*\_sim8.asm}; work length: \texttt{NWORK} = 4 or 25.
+      \end{itemize}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\scriptonly{%
+EdSim51 must be installed (Java). The browser-based simulator by Schweigi needs no installation, but it simulates a much simpler CPU: four general-purpose registers, a stack pointer, the flags Z and C, 256 bytes of memory shared by code, data and stack, and a 24-character console mapped to E8h--FFh. It has neither a timer nor interrupts nor input pins. The files \texttt{isr\_overrun\_sim8.asm} and \texttt{stack\_overflow\_sim8.asm} in the folders of examples~5 and~6 therefore emulate the hardware in software: the subroutine \texttt{tick} is one clock of a timer with period~10. On overflow it sets TF, and if TF is set and no ISR is in progress (\texttt{INPROG} = 0), it clears TF, sets \texttt{INPROG} and jumps to the ISR, which returns to the caller of \texttt{tick}. The routine \texttt{reti} clears \texttt{INPROG} and returns, exactly the part of \texttt{RETI} the experiments depend on. Because every loop calls \texttt{tick} once per pass, interrupts are only accepted at these points, and time is counted in \texttt{tick} calls rather than machine cycles. The switch SW0 is replaced by the variable \texttt{NWORK} at address 08h, which is edited in the source before assembling.
+
+\lstinputlisting[style=asm51,caption={Web simulator version of example 5},label={lst:ex05web}]{examples/ex05_8051_isr_overrun/isr_overrun_sim8.asm}
+
+In Example~\ref{lst:ex05web} the console shows a timeline with one character per tick: \texttt{.} for the main loop, \texttt{\#} for the ISR, \texttt{|} for a timer overflow and \texttt{X} for an overflow while TF was still set, i.e.\ a lost tick. With $\mathtt{NWORK} = 4$ the pattern \texttt{|\#\#\#\#.....} repeats and TICKS (02h) equals PERIODS (03h). With $\mathtt{NWORK} = 25$ the ISR runs for 2.5 periods: after 13 periods only 5 ISRs have run, OVERRUN (04h) counts every ISR, and only one main loop pass (\texttt{.}) fits between two ISRs, the counterpart of the one instruction on the 8051.
+
+\lstinputlisting[style=asm51,caption={Web simulator version of example 6},label={lst:ex06web}]{examples/ex06_8051_stack_overflow/stack_overflow_sim8.asm}
+
+Example~\ref{lst:ex06web} calls \texttt{reti} early, as \texttt{allowNesting} does on the 8051. Each nesting level puts 4 bytes on the stack: the return address of the interrupted \texttt{tick} call, A, B and the return address of \texttt{work}. The memory view marks the stack area, which grows downwards from E7h by 4 bytes per period. The console shows SETPOINT as a character and one \texttt{>} per nesting level. With long work, the stack overwrites SETPOINT at depth~18 with a byte of a return address. Nothing happens at that moment; only the ISR at depth~19 outputs the corrupted value, and the \texttt{S} on the console turns into a \texttt{C}. When level~21 starts, the guard \texttt{CMP SP, LIMIT} stops the CPU with \texttt{!}. Without the guard the stack would run into the code, as there is no separation between code, data, and stack in this memory.
+}
+
+\begin{frame}[fragile]{Example 5 in the browser: reading the timeline}
+  \footnotesize
+  Console after 40 ticks (one character per tick, starting at tick 1):
+\begin{verbatim}
+NWORK = 4 : .........|####.....|####.....|####.....|
+NWORK = 25: .........|#########|#########X#####.###|
+tick:               10        20        30
+\end{verbatim}
+  \begin{itemize}
+    \item \textbf{Tick 20:} \texttt{|} inside the \texttt{\#} block: the next overflow arrives while the ISR still runs (pending, not yet lost).
+    \item \textbf{Tick 30:} \texttt{X}: TF is still set, this tick is lost. Real hardware shows nothing here.
+    \item \textbf{Afterwards:} one \texttt{.} between ISRs, then the next ISR starts without a \texttt{|}: it serves an old, delayed tick.
+    \item \textbf{Counters (memory view):} TICKS (02h) falls behind PERIODS (03h), e.g.\ 5 ISRs in 13 periods; OVERRUN (04h) +1 per ISR; MAINCNT (05h) +1 per ISR instead of +6 per period.
+    \item The timeline wraps after 24 ticks: \emph{Stop} or \emph{Step} to read it.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Example 6 in the browser: watching the stack}
+  \begin{columns}[T]
+    \begin{column}{0.40\textwidth}
+    \begin{tikzpicture}[x=1cm,y=0.32cm,font=\scriptsize]
+      \draw[fill=gray!20] (0,0) rectangle (2.6,3) node[midway]{code};
+      \draw[fill=yellow!20] (0,3) rectangle (2.6,4) node[midway]{LIMIT zone};
+      \draw[fill=yellow!50] (0,4) rectangle (2.6,5) node[midway]{SETPOINT};
+      \draw[fill=orange!30] (0,5) rectangle (2.6,10) node[midway,align=center]{stack\\4 bytes/level};
+      \draw[fill=blue!10] (0,10) rectangle (2.6,11.5) node[midway]{console};
+      \node[left] at (0,10) {E7h};
+      \node[left] at (0,11.5) {FFh};
+      \node[left] at (0,0) {00h};
+      \draw[->,red,thick] (2.85,9.5) -- (2.85,4.5) node[right,align=left]{grows\\down};
+    \end{tikzpicture}
+    \end{column}
+    \begin{column}{0.58\textwidth}
+      \small
+      \begin{itemize}
+        \item \textbf{Correct (NWORK = 4):} SP between E1h and E7h, DEPTH 0/1, one \texttt{>}, console \texttt{S}.
+        \item \textbf{Period 2:} DEPTH = 2, SP does not return. This is already the error.
+        \item \textbf{Depth 18:} the stack reaches SETPOINT. Silent.
+        \item \textbf{Depth 19:} the ISR outputs the corrupted value: \texttt{S} $\to$ \texttt{C}.
+        \item \textbf{Level 21:} SP $<$ LIMIT, guard stops the CPU: \texttt{!}.
+        \item Same memory for code, data, stack: without the guard the stack overwrites \texttt{reti} next.
+      \end{itemize}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\scriptonly{%
+In the browser versions the first symptom is always visible long before the visible failure. In example~5 the first \texttt{X} appears at tick~30, during the first ISR; from then on the counters TICKS and PERIODS drift apart. In example~6 the depth of 2 in the second period already proves the error, because with work longer than the period the depth can only grow. The corrupted output appears 17 periods later, the stop only after 20 periods. A test that only looks for a crash or a wrong output would need to run that long, and on a real controller with more RAM much longer; checking the invariants finds the error in the first periods.
+}
 
 % ===========================================================================
 \section{Static Code Analysis}
