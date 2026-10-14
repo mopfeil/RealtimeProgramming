@@ -29,3 +29,17 @@
 \newcommand{\wokwiexample}[3]{% dir, caption, label
   \lstinputlisting[caption={#2},label={#3}]{examples/#1/sketch.ino}%
 }
+
+% 8051 assembler (EdSim51 examples)
+\lstdefinelanguage{asm51}{
+  sensitive=false,
+  morecomment=[l]{;},
+  morekeywords={MOV,PUSH,POP,INC,DEC,ADD,SUBB,CLR,SETB,CPL,JMP,CALL,RET,RETI,
+    JB,JNB,JC,JNC,JZ,JNZ,DJNZ,SJMP,LJMP,LCALL,ORG,EQU,END},
+}
+\lstdefinestyle{asm51}{style=arduino, language=asm51, basicstyle=\ttfamily\scriptsize}
+
+% EdSim51 example: examples/<dir>/<file>.asm
+\newcommand{\edsimexample}[4]{% dir, file, caption, label
+  \lstinputlisting[style=asm51,caption={#3},label={#4}]{examples/#1/#2.asm}%
+}
