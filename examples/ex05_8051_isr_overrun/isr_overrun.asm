@@ -13,6 +13,24 @@
 ;
 ; The right-hand column gives the machine cycles of each instruction.
 ; It is the input for the static analysis in the lecture.
+;
+; HOW TO SPOT THE ERROR
+; Nothing crashes. The program runs on at a lower rate than programmed.
+; Stop the run after about 20 ms (simulated) and compare (values in hex):
+;
+;   check                     SW0 = 1 (short)       SW0 = 0 (long)
+;   TICKS (20h) vs. time      one per 200 us        one per 489 us:
+;                             (99 = 63h in 20 ms)   41 = 29h in 20 ms
+;   OVERRUN (21h)             stays 0               +1 after every ISR
+;                                                   (40 = 28h in 20 ms)
+;   LEDs (MAINHI)             count up              never change
+;
+; When does it show? With the long work the first ISR is still running
+; when TF0 is set again (pending) and once more 200 us later: that tick
+; is lost. The ISR ends after 488 us with TF0 set, OVERRUN becomes 1.
+; Then the main loop executes one instruction and the next ISR starts.
+; The hardware does not count lost ticks; only the TF0 check in the ISR
+; (marked below) makes the problem visible.
 ; ---------------------------------------------------------------------------
 
 RELOAD  EQU 56          ; 256 - 200: Timer 0 overflows every 200 cycles
@@ -44,6 +62,7 @@ main:   MOV SP,#2FH             ; stack 30h..7Fh, above bank 1 and variables
         SETB TR0                ; start Timer 0
 
 loop:   INC MAINLO              ; background work: 16-bit counter  1
+                                ; long work: 1 instruction per ISR
         MOV A,MAINLO            ;                                  1
         JNZ loop                ;                                  2
         INC MAINHI
@@ -62,6 +81,7 @@ t0isr:  PUSH PSW                ; save flags and bank selection    2
         MOV R7,#NLONG           ;                                  1
 doWork: CALL work               ;                                  2
         JNB TF0,isrEnd          ; timer already overflowed again?  2
+                                ; (the program's only error check)
         INC OVERRUN             ; yes: deadline of next tick missed 1
 isrEnd: POP ACC                 ;                                  2
         POP PSW                 ; restores bank 0                  2

@@ -17,6 +17,23 @@
 ;                           the program with all LEDs on.
 ;
 ; Watch: SP, TICKS (20h), DEPTH (21h), MAXDEPTH (22h), RAM 30h..7Fh, LEDs.
+;
+; HOW TO SPOT THE ERROR
+; The stack has no visible border: it grows over whatever lies above it.
+;
+;   check                     SW0 = 1 (short)       SW0 = 0 (long)
+;   SP                        stays <= 36h          +7 every 200 us
+;   DEPTH / MAXDEPTH          1 / 1                 +1 every period
+;   LEDs                      4..7 on (F0h)         4..7 on, then dark,
+;                                                   then all on (guard)
+;
+; When does it show? (long work, time from the first tick)
+;   - 2nd tick: DEPTH 2, SP moves up and never comes back down
+;   - depth 7 (about 1.4 ms): a return address of level 7 overwrites
+;     SETPOINT (60h). Nothing reports it, the ISR outputs the corrupted
+;     value: the LEDs go dark (a wrong value at the actuator).
+;   - depth 11 (about 2.2 ms): SP >= 78h, the guard stops the program
+;     with all LEDs on.
 ; ---------------------------------------------------------------------------
 
 RELOAD   EQU 56          ; 256 - 200: Timer 0 overflows every 200 cycles
@@ -53,7 +70,8 @@ idle:   JMP idle
 t0isr:  PUSH ACC                ; context: 2 bytes PC (hardware) + 3 bytes
         PUSH PSW
         PUSH 07H                ; R7 of bank 0, used by work()
-        MOV A,SP                ; stack guard
+        MOV A,SP                ; stack guard: turns the silent overflow
+                                ; into a visible stop
         CLR C
         SUBB A,#STACKLIM
         JNC stackOverflow
@@ -64,7 +82,8 @@ t0isr:  PUSH ACC                ; context: 2 bytes PC (hardware) + 3 bytes
         SUBB A,MAXDEPTH
         JC noMax
         MOV MAXDEPTH,DEPTH
-noMax:  MOV A,SETPOINT          ; output setpoint to the actuator
+noMax:  MOV A,SETPOINT          ; output setpoint to the actuator,
+                                ; garbage once the stack reached 60h
         CPL A                   ; LEDs are active low
         MOV P1,A
         CALL allowNesting       ; RETI: next tick may now preempt this ISR
