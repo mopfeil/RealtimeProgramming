@@ -10,3 +10,5 @@ build/
 *.synctex.gz
 RTP-Master24.pptx
 FreeRTOS.zip
+pptx/.venv/
+__pycache__/

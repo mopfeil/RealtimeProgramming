@@ -1,0 +1,11 @@
+#!/bin/sh
+# git pre-commit hook (install with "make hooks"): refuse a commit that
+# changes the slide sources without an up-to-date PowerPoint deck.
+# Bypass once with "git commit --no-verify".
+git diff --cached --name-only |
+  grep -qE '^(main\.tex|preamble\.tex|chapters/|examples/.*\.(ino|asm)$|pptx/build_pptx\.py$)' || exit 0
+python3 pptx/build_pptx.py --check || exit 1
+git diff --quiet -- pdf/RealtimeProgramming_Slides.pptx pptx/sources.sha256 || {
+  echo "Deck rebuilt but not staged: git add pdf/RealtimeProgramming_Slides.pptx pptx/sources.sha256" >&2
+  exit 1
+}

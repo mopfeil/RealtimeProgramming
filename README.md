@@ -5,11 +5,29 @@ One LaTeX source builds either the **script** or the **slides**.
 
 ## Build
 
-    make script   # build/script.pdf
-    make slides   # build/slides.pdf
+    make script      # build/script.pdf
+    make slides      # build/slides.pdf
+    make pptx        # pdf/RealtimeProgramming_Slides.pptx (also builds script and slides)
+    make             # all three
 
 Or set `\providecommand{\lecturemode}{script|slides}` at the top of `main.tex`.
 Requires `pdflatex`, `latexmk`, `beamer`, and the `metropolis` beamer theme.
+
+## PowerPoint deck
+
+`pdf/RealtimeProgramming_Slides.pptx` is the slide deck for presenting with PowerPoint: every page of
+`slides.pdf` as a full-slide picture, and as speaker notes the script-only text that follows the frame in
+`chapters/*.tex` (the explanations the slides leave out). The slides are pictures, so change them in the
+LaTeX source, not in PowerPoint. The deck is committed and must be rebuilt whenever the slides change:
+
+    make pptx         # rebuild; Python packages go into pptx/.venv on the first run
+    make check-pptx   # fails if the deck is older than the slide sources
+    make hooks        # install a git pre-commit hook that runs the check
+
+`pptx/sources.sha256` holds a hash of the slide sources (`main.tex`, `preamble.tex`, `chapters/*.tex`,
+the example files, `pptx/build_pptx.py`) from the last build; the check compares it with the current files.
+Commit it together with the deck. With the hook installed, a commit that changes the sources without the
+rebuilt deck is refused (`git commit --no-verify` skips the check once, e.g. for Overleaf merges).
 
 ## Layout
 
@@ -20,6 +38,7 @@ Requires `pdflatex`, `latexmk`, `beamer`, and the `metropolis` beamer theme.
 | `examples/` | Wokwi projects (`sketch.ino`, `diagram.json`, `libraries.txt`), included in the text via `\wokwiexample`; `ex05_8051_*`, `ex06_8051_*`: EdSim51 assembler programs (`.asm`), included via `\edsimexample` |
 | `examples_vscode/` | Copies of the Wokwi examples as PlatformIO projects for the *Wokwi for VS Code* extension, with a tutorial in `examples_vscode/README.md` |
 | `lib/FreeRTOS/` | Patched Arduino FreeRTOS library used in the examples |
+| `pptx/`, `pdf/` | PowerPoint deck built from the slides (see above) |
 
 ## Wokwi examples
 
