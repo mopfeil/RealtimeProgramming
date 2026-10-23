@@ -156,8 +156,8 @@ Extra files in these two folders:
 - A recent `avr-gdb` (version 12 or newer). The `avr-gdb` of the Arduino IDE (7.8) and of PlatformIO is too old:
   VS Code then fails with *Failed to find thread 1 for break event*.
   - **Windows:** download the latest `avr-gcc-…-x64-windows.zip` from
-    <https://github.com/ZakKemble/avr-gcc-build/releases> and unpack it to `C:\avr-gcc`, so that
-    `C:\avr-gcc\bin\avr-gdb.exe` exists. Check with `C:\avr-gcc\bin\avr-gdb.exe --version`.
+    <https://github.com/ZakKemble/avr-gcc-build/releases> and put `avr-gdb.exe` into `C:\avr-gcc`, so that
+    `C:\avr-gcc\avr-gdb.exe` exists. Check with `C:\avr-gcc\avr-gdb.exe --version`.
     `launch.json` uses this path on Windows (`"windows": { "miDebuggerPath": … }`); for another folder change it there.
     Allow the firewall prompt for private networks: GDB connects to `localhost:3333`/`3334`.
   - **Linux:** `sudo apt install gdb-avr`. **macOS:** see <https://docs.wokwi.com/vscode/debugging>.

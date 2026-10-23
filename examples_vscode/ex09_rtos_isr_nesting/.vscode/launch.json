@@ -9,7 +9,7 @@
       "cwd": "${workspaceFolder}",
       "MIMode": "gdb",
       "miDebuggerPath": "avr-gdb",
-      "windows": { "miDebuggerPath": "C:/avr-gcc/bin/avr-gdb.exe" },
+      "windows": { "miDebuggerPath": "C:/avr-gcc/avr-gdb.exe" },
       "miDebuggerServerAddress": "localhost:3334",
       "postRemoteConnectCommands": [
         { "text": "source debug.gdb", "description": "breakpoints and views", "ignoreFailures": false }
