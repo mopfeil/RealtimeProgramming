@@ -1,0 +1,19 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Wokwi GDB + debug.gdb",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/.pio/build/uno/firmware.elf",
+      "cwd": "${workspaceFolder}",
+      "MIMode": "gdb",
+      "miDebuggerPath": "avr-gdb",
+      "miDebuggerServerAddress": "localhost:3334",
+      "postRemoteConnectCommands": [
+        { "text": "source debug.gdb", "description": "breakpoints and views", "ignoreFailures": false }
+      ],
+      "internalConsoleOptions": "openOnSessionStart"
+    }
+  ]
+}

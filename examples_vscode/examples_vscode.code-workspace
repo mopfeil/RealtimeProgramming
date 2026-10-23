@@ -4,9 +4,15 @@
     { "path": "ex02_isr_semaphore" },
     { "path": "ex03_queue" },
     { "path": "ex04_runtime_stats" },
-    { "path": "ex07_time_slicer" }
+    { "path": "ex07_time_slicer" },
+    { "path": "ex08_avr_isr_nesting" },
+    { "path": "ex09_rtos_isr_nesting" }
   ],
   "extensions": {
-    "recommendations": ["wokwi.wokwi-vscode", "platformio.platformio-ide"]
+    "recommendations": [
+      "wokwi.wokwi-vscode",
+      "platformio.platformio-ide",
+      "ms-vscode.cpptools"
+    ]
   }
 }

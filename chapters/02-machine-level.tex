@@ -550,6 +550,149 @@ In the browser versions the first symptom is always visible long before the visi
 }
 
 % ===========================================================================
+\section{Nested Interrupts on the AVR: Watching the Stack in the Debugger}
+\label{sec:avrnesting}
+
+\begin{frame}[fragile]{Example 8: example 6 in Arduino C}
+  \begin{columns}[T]
+    \begin{column}{0.60\textwidth}
+\lstinputlisting[basicstyle=\ttfamily\fontsize{6}{7}\selectfont,linerange={82-104},numbers=none]{examples/ex08_avr_isr_nesting/sketch.ino}
+    \end{column}
+    \begin{column}{0.38\textwidth}
+      \small
+      \begin{itemize}
+        \item Timer~1 every $T = 1$\,ms, work 0.3\,ms or 2.5\,ms (DIP switch~1).
+        \item The AVR clears I on ISR entry; \texttt{sei()} sets it again: the \texttt{allowNesting} of example~6.
+        \item Stack from \texttt{RAMEND} (8FFh) \emph{downwards}, towards the static variables. \texttt{app} lies in \texttt{.noinit}, right after \texttt{.bss}: the first data the stack meets.
+        \item 22 bytes per level: 18 pushed registers, return address, call of \texttt{work}.
+      \end{itemize}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\scriptonly{%
+\wokwiexample{ex08_avr_isr_nesting}{Nested timer interrupts on the AVR without an RTOS}{lst:ex08}
+
+Example~\ref{lst:ex08} transfers example~6 to the ATmega328P of the Arduino Uno. The AVR has no ``interrupt in progress'' flag per level; instead it clears the global interrupt flag I in SREG when it enters an ISR, and \texttt{RETI} sets it again. An ISR that executes \texttt{sei()} can therefore be interrupted by any interrupt, including its own. avr-libc offers the same as \texttt{ISR\_NOBLOCK}, which places the \texttt{sei} before the prologue. The example executes \texttt{sei()} only after its bookkeeping, so that \texttt{depth}, \texttt{maxDepth} and \texttt{levelSP[]} are updated atomically.
+
+The stack of the AVR grows from \texttt{RAMEND} (8FFh) downwards. Below it lie the free RAM, the heap (unused here), and the static variables in the order \texttt{.data}, \texttt{.bss}, \texttt{.noinit}. Placing \texttt{app} in \texttt{.noinit} makes it the variable with the highest address, so the stack meets \texttt{app.setpoint} first, just as it met SETPOINT on the 8051. The guard \texttt{STACK\_LIMIT} leaves room for one more ISR frame below \texttt{app}; a guard that only trips once SP lies below the protected data would let the frame that trips it overwrite the variables below.
+
+The empty functions \texttt{dbgNested}, \texttt{dbgSetpointCorrupted} and \texttt{dbgStackOverflow} do nothing at run time. They mark the moments worth looking at, and the debugger sets its breakpoints on them.
+}
+
+\begin{frame}{Debugging with Wokwi for VS Code}
+  \begin{itemize}
+    \item Wokwi simulates the firmware built by PlatformIO and offers a GDB server (port 3333). VS Code connects \texttt{avr-gdb} to it (\texttt{.vscode/launch.json}).
+    \item \texttt{debug.gdb} (loaded automatically) sets the breakpoints and defines views for the Debug Console: \texttt{-exec levels}, \texttt{-exec sv}, \texttt{-exec memmap}.
+    \item A breakpoint stops the whole simulated CPU, timers included: after \emph{Continue} the program runs on as if there had been no pause.
+  \end{itemize}
+  \begin{center}\footnotesize
+  \begin{tabular}{@{}lll@{}}
+    \toprule
+    Breakpoint & long work & what to look at \\
+    \midrule
+    \texttt{dbgNested} & 2\,ms, depth 2 & SP of both levels, SREG.I = 0 \\
+    \texttt{dbgSetpointCorrupted} & 79\,ms, level 79 & \texttt{app.setpoint} = 4Eh, SP $<$ \&\texttt{app.setpoint} \\
+    \texttt{dbgStackOverflow} & 83\,ms, level 83 & guard: SP $<$ \texttt{STACK\_LIMIT} \\
+    \bottomrule
+  \end{tabular}
+  \end{center}
+  \begin{itemize}
+    \item Sidebar: \emph{Registers $\to$ CPU} (r0--r31, SREG, SP, PC), \emph{Watch}: \texttt{depth}, \texttt{levelSP}, \texttt{app}.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}[fragile]{Example 8 in the debugger: one frame per tick}
+\begin{verbatim}
+Breakpoint 3, dbgSetpointCorrupted (level=79, value=78 'N')
+0x8ff  RAMEND, the stack starts here and grows down
+0x233  SP (stack used: 1740 bytes)
+       free: -5 bytes (negative: the stack has passed app.setpoint)
+0x238  app.setpoint = 0x4e (0xf0 = intact)
+0x1f0  STACK_LIMIT, guard trips when SP is below
+level   SP    bytes  interrupted code (return address on the stack)
+    1  0x8e9    -   main + 12 in section .text
+    2  0x8d3   22   work(unsigned char) + 8 in section .text
+  ...
+   79  0x235   22   work(unsigned char) + 10 in section .text
+\end{verbatim}
+  \begin{itemize}
+    \small
+    \item Every level from 2 on has interrupted \texttt{work()} of the level before: none of them will ever resume.
+    \item Level 79 has pushed its own registers over \texttt{app.setpoint}; the same ISR outputs the wrong value.
+    \item $\text{stack}(t) = 22\,d(t)$ bytes: the formula of example~6 with 22 instead of 7.
+  \end{itemize}
+\end{frame}
+
+\scriptonly{%
+The command \texttt{levels} reads \texttt{levelSP[]}, the stack pointer each level stored right after its prologue, and finds the return address above the 18 pushed registers. The hardware pushes the program counter as a word address, high byte at the lower address; multiplied by two it is a byte address that GDB translates into a function and an offset. The output shows the mechanism of example~6 directly: level~1 interrupted the empty main loop, every further level interrupted the busy loop in \texttt{work()} of the level before, and the distance between two levels is always 22 bytes. GDB writes RAM addresses with an offset of 800000h (e.g.\ \texttt{0x8008d2}), because on the AVR flash and RAM both start at address~0.
+
+With the short work the depth stays~1 and none of the three breakpoints is hit. To look at a single ISR in that case, enable the breakpoint on \texttt{dbgTick}, which is called at every ISR entry: \texttt{-exec info breakpoints} lists the numbers, \texttt{-exec enable} $n$ enables it.
+}
+
+\begin{frame}[fragile]{Example 9: the same ISR under FreeRTOS}
+  \begin{columns}[T]
+    \begin{column}{0.55\textwidth}
+\lstinputlisting[basicstyle=\ttfamily\fontsize{6}{7}\selectfont,linerange={106-106,121-134},numbers=none]{examples/ex09_rtos_isr_nesting/sketch.ino}
+    \end{column}
+    \begin{column}{0.43\textwidth}
+      \small
+      \begin{itemize}
+        \item An AVR ISR has no stack of its own: it pushes onto the stack of the \emph{interrupted task}.
+        \item Task stacks are blocks of fixed size on the FreeRTOS heap; below each one lies the previous block.
+        \item DIP switch~2: work in the ISR (nesting) or in a Worker task, the ISR only notifies (\emph{deferred interrupt handling}).
+      \end{itemize}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\scriptonly{%
+\wokwiexample{ex09_rtos_isr_nesting}{The nested ISR of example 8 under FreeRTOS}{lst:ex09}
+
+Example~\ref{lst:ex09} uses the ISR of example~8 in a FreeRTOS application (tasks are introduced in Chapter~\ref{sec:tasks}). The Ctrl task outputs the setpoint every tick and otherwise waits, so the Idle task runs most of the time and is the task the timer interrupt usually interrupts. The Ctrl task also reads the DIP switches right after each tick, so that a phase of long work always starts at the same point of the scheduler period. The heap holds, in this order, the stack and TCB of the Worker, the stack and TCB of Ctrl, the block \texttt{app}, and the stack and TCB of Idle, which the scheduler creates after \texttt{setup()}.
+}
+
+\begin{frame}{Example 9: who notices the overflow?}
+  \begin{columns}[T]
+    \begin{column}{0.36\textwidth}
+    \begin{tikzpicture}[x=1cm,y=0.42cm,font=\scriptsize]
+      \draw[fill=blue!10] (0,0) rectangle (2.8,1) node[midway]{Worker stack};
+      \draw[fill=gray!20] (0,1) rectangle (2.8,2) node[midway]{Worker TCB};
+      \draw[fill=blue!10] (0,2) rectangle (2.8,3) node[midway]{Ctrl stack};
+      \draw[fill=gray!20] (0,3) rectangle (2.8,4) node[midway]{Ctrl TCB};
+      \draw[fill=yellow!20] (0,4) rectangle (2.8,6.5) node[midway]{\texttt{app->buffer}};
+      \draw[fill=yellow!50] (0,6.5) rectangle (2.8,7.2) node[midway]{\texttt{setpoint}};
+      \draw[fill=orange!30] (0,7.2) rectangle (2.8,9.5) node[midway]{Idle stack};
+      \draw[fill=gray!20] (0,9.5) rectangle (2.8,10.5) node[midway]{Idle TCB};
+      \draw[->,red,thick] (3.05,9.2) -- (3.05,5);
+      \node[red,right,align=left] at (3.1,8.2) {ISR\\levels};
+      \node[left] at (0,0) {268h};
+      \node[left] at (0,7.2) {553h};
+    \end{tikzpicture}
+    \end{column}
+    \begin{column}{0.62\textwidth}
+      \small
+      Long work, switch~2 OFF (nesting):
+      \begin{itemize}
+        \item \textbf{2\,ms:} depth 2, both levels on the Idle stack, 27 bytes each.
+        \item \textbf{8\,ms:} level 8 overwrites \texttt{app->setpoint}. FreeRTOS does not notice.
+        \item \textbf{16\,ms:} next tick, switch from Idle to Ctrl. Only now \texttt{configCHECK\_FOR\_STACK\_OVERFLOW} compares Idle's saved SP with the start of its stack: about 250 bytes below $\Rightarrow$ \texttt{vApplicationStackOverflowHook}.
+      \end{itemize}
+      Long work, switch~2 ON (deferred):
+      \begin{itemize}
+        \item Depth stays 1, all stacks flat. The Worker cannot keep up: \texttt{ulTaskNotifyTake()} returns 2 or 3 pending ticks $\Rightarrow$ counted as overruns.
+      \end{itemize}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\scriptonly{%
+The debug setup of example~9 adds two views to the Debug Console. \texttt{-exec tasks} lists every task with its priority, the start of its stack (\texttt{pxStack} in the TCB) and its current stack pointer: for the running task the CPU register SP, for all others the value saved in the TCB at the last switch. The difference is the number of bytes the task has left; a negative value is an overflow. \texttt{-exec heap} lists the heap blocks in address order. At the breakpoint \texttt{dbgRtosStackOverflow} the Idle task has $-256$ bytes left, while the stacks of all other tasks are untouched.
+
+The check of FreeRTOS runs only when a task is switched out, and method~1 only compares the saved stack pointer with the start of the stack. Between two checks the overflow is invisible, and the overflow can destroy the data the check needs: with a smaller \texttt{app} block the stack reaches the TCB of Ctrl before the next tick. Ctrl is then no longer woken, there is no task switch, and in the simulation the hook was called only after 258\,ms, after the stack had passed through the TCBs and stacks of two more tasks. The check is a useful alarm, not a protection. The design rule is the one of example~6: every task stack must have room for its own worst case \emph{plus} the deepest ISR frame, and that depth has a bound only if ISRs do not nest themselves. Moving the work into a task (switch~2) gives this bound. The load problem remains, but it shows up as counted overruns and a starved Ctrl task instead of as corrupted memory.
+}
+
+% ===========================================================================
 \section{Static Code Analysis}
 \label{sec:static}
 
