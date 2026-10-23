@@ -153,9 +153,15 @@ Extra files in these two folders:
 ### Prerequisites
 
 - Extension **C/C++** (`ms-vscode.cpptools`).
-- A recent `avr-gdb` in the `PATH` (Linux: `sudo apt install gdb-avr`; others: <https://docs.wokwi.com/vscode/debugging>).
-  The `avr-gdb` in `~/.platformio/packages/toolchain-atmelavr` is too old and needs `libncurses5`.
-  If `avr-gdb` is not in the `PATH`, put its full path into `miDebuggerPath` in `.vscode/launch.json`.
+- A recent `avr-gdb` (version 12 or newer). The `avr-gdb` of the Arduino IDE (7.8) and of PlatformIO is too old:
+  VS Code then fails with *Failed to find thread 1 for break event*.
+  - **Windows:** download the latest `avr-gcc-…-x64-windows.zip` from
+    <https://github.com/ZakKemble/avr-gcc-build/releases> and unpack it to `C:\avr-gcc`, so that
+    `C:\avr-gcc\bin\avr-gdb.exe` exists. Check with `C:\avr-gcc\bin\avr-gdb.exe --version`.
+    `launch.json` uses this path on Windows (`"windows": { "miDebuggerPath": … }`); for another folder change it there.
+    Allow the firewall prompt for private networks: GDB connects to `localhost:3333`/`3334`.
+  - **Linux:** `sudo apt install gdb-avr`. **macOS:** see <https://docs.wokwi.com/vscode/debugging>.
+    On Linux and macOS `launch.json` expects `avr-gdb` in the `PATH`; otherwise put the full path into `miDebuggerPath`.
 
 ### Run a debug session
 
@@ -256,4 +262,5 @@ wokwi-cli --timeout 5000 .  # simulate 5 s (needs WOKWI_CLI_TOKEN from https://w
 | Wrong example simulated in the multi-folder workspace | `F1` → **Wokwi: Select Config File** |
 | `F5` fails: *Unable to start debugging* / connection refused | Start Wokwi first with **Start Simulator and Wait for Debugger**; check that the port in `launch.json` matches `gdbServerPort` in `wokwi.toml` |
 | `F5` fails: `avr-gdb` not found | Install `avr-gdb` or set the full path in `miDebuggerPath` |
+| `F5` fails: *Failed to find thread 1 for break event* | `avr-gdb` too old (Arduino IDE / PlatformIO): use a current one, see [Prerequisites](#prerequisites) |
 | No breakpoint is hit (ex08/ex09) | DIP switch 1 is OFF (short work): nothing goes wrong. Switch it ON |
