@@ -1,4 +1,5 @@
 \section{Queues}
+\label{sec:queues}
 
 \begin{frame}{Queues}
   \begin{itemize}
@@ -24,5 +25,76 @@ xQueueSendFromISR(q, &value, &woken);        // inside an ISR
 \end{frame}
 
 \scriptonly{%
-The consumer blocks on the queue until an item arrives. If the consumer has the higher priority it runs immediately after each send. If the producer has the higher priority, the queue fills up and the producer blocks on a full queue. Use the logic analyzer to observe both cases.
+The consumer blocks on the queue until an item arrives. If the consumer has the higher priority it runs immediately after each send. If the producer has the higher priority, the queue fills up and the producer blocks on a full queue. Use the logic analyzer to observe both cases. Note the tick resolution of the Arduino port (16\,ms, Chapter~\ref{sec:sync}): \texttt{pdMS\_TO\_TICKS(10)} is 0 ticks, so the producer does not wait at all and its send simply fails when the queue is full.
+}
+
+\begin{frame}{Queues and priorities}
+  \begin{itemize}
+    \item A queue has two waiting lists, both ordered by priority: tasks waiting to \emph{receive} (queue empty) and tasks waiting to \emph{send} (queue full).
+    \item Send and receive are scheduling points: a send wakes the highest priority receiver; if it has a higher priority than the sender, it runs at once.
+    \item \textbf{Receiver higher than sender}: every item is taken out right after it was sent. The queue holds at most one item; the latency is minimal.
+    \item \textbf{Sender higher than receiver}: the sender fills the queue in one go; the receiver only runs when the sender blocks. Items wait in the queue: higher latency, fewer context switches.
+    \item \textbf{Full queue}: a blocking sender is throttled to the speed of the receiver (\emph{back-pressure}). The queue length absorbs bursts, it cannot make up for a receiver that is too slow on average.
+    \item Queues have no owner $\rightarrow$ no priority inheritance. A high priority receiver waiting on a low priority sender is ordinary waiting, not inversion: design the priorities along the data flow.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Queues and ISRs}
+  \begin{itemize}
+    \item \texttt{xQueueSendFromISR()}, \texttt{xQueueReceiveFromISR()}: never block. A send to a full queue fails at once $\rightarrow$ the data is lost. Count it.
+    \item \texttt{woken}: as with semaphores; yield at the end of the ISR so that a woken high priority task runs directly after the ISR.
+    \item Size the queue for the worst burst: items arriving while the receiver cannot run (higher priority tasks, its own processing time).
+    \item \texttt{xQueueOverwriteFromISR()} on a queue of length 1: a \emph{mailbox} that always holds the latest value (e.g.\ a sensor reading), old values are dropped on purpose.
+    \item Pass data, not just events: the queue replaces the semaphore \emph{and} the shared variable, so no extra mutex is needed.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Gatekeeper task}
+  \begin{center}
+  \begin{tikzpicture}[font=\small,node distance=6mm and 14mm,
+      box/.style={draw,rounded corners,minimum width=20mm,minimum height=6mm}]
+    \node[box] (a) {Task A};
+    \node[box,below=of a] (b) {Task B};
+    \node[box,below=of b] (i) {ISR};
+    \node[draw,minimum width=18mm,minimum height=6mm,right=of b] (q) {queue};
+    \node[box,right=of q,fill=yellow!20] (g) {Gatekeeper};
+    \node[box,right=of g] (r) {UART};
+    \draw[->] (a) -- (q); \draw[->] (b) -- (q); \draw[->] (i) -- node[below,font=\scriptsize]{FromISR} (q);
+    \draw[->] (q) -- (g); \draw[->] (g) -- (r);
+  \end{tikzpicture}
+  \end{center}
+  \begin{itemize}
+    \item Only the gatekeeper accesses the resource; the others send requests (e.g.\ lines of text) through a queue.
+    \item No mutex: no priority inversion, no deadlock on this resource, and ISRs can use it too.
+    \item Cost: one task (stack!) and a copy of every request. The gatekeeper's priority decides how fast requests are served.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Wokwi example 13: ISR $\rightarrow$ queue $\rightarrow$ tasks}
+  \begin{columns}[T]
+    \begin{column}{0.52\textwidth}
+      \small
+      \begin{itemize}
+        \item Timer~1 ISR every 20\,ms: potentiometer sample $\rightarrow$ \texttt{sampleQ} (4), \texttt{xQueueSendFromISR()}.
+        \item Filter (prio~2): receive with 100\,ms timeout, mean of 4 samples $\rightarrow$ \texttt{logQ} (2), blocks if full.
+        \item Log (prio~1): prints the mean, the fill level of \texttt{sampleQ}, the Filter's wait on \texttt{logQ}, lost samples and timeouts.
+      \end{itemize}
+      Logic analyzer: D0 = ISR, D1 = Filter, D2 = Log. LED~13: sample lost.
+    \end{column}
+    \begin{column}{0.46\textwidth}
+      \small
+      \begin{itemize}
+        \item Normal: \texttt{fill=1 wait=0 lost=0}: the Filter (higher prio) takes every sample right away.
+        \item DIP switch~1: Filter needs 30\,ms per 20\,ms sample. \texttt{sampleQ} overflows, the ISR loses samples; Log runs only while the Filter waits for room in \texttt{logQ}.
+        \item DIP switch~2: no samples, the receive times out every 100\,ms.
+        \item Exercise: \texttt{LOG\_BAUD} 4800. Log is too slow on average: \texttt{wait}, \texttt{fill}, then \texttt{lost} grow.
+      \end{itemize}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\scriptonly{%
+\wokwiexample{ex13_queue_isr}{An ISR feeds a chain of two queues}{lst:ex13}
+
+Between ISR and Filter in Listing~\ref{lst:ex13}, the receiver has the higher priority: the ISR wakes the Filter, yields, and the Filter takes the sample long before the ISR's next period, so \texttt{sampleQ} never holds more than one sample. A queue of length~4 still makes sense: it is the reserve for the time the Filter cannot run. With switch~1 the Filter needs more CPU time than the samples allow, and the reserve is used up within a few periods. The ISR cannot wait and loses samples, and the Log task, which has the lowest priority, only gets the CPU while the Filter is blocked on the full \texttt{logQ}. In the logic analyzer, the Filter trace (D1) then stays high almost permanently. The exercise with 4800\,baud shows the other kind of overload: now the \emph{receiver} at the end of the chain is too slow. The Filter blocks in \texttt{xQueueSend()} (\emph{back-pressure}), its blocking time lets samples pile up in \texttt{sampleQ}, and after a few hundred milliseconds the ISR loses samples although each task alone would be fast enough. Queues absorb bursts; they cannot absorb a permanent difference in throughput. The \texttt{wait} column is measured with \texttt{micros()} and reported one item later, because the wait is known only after the item has been sent.
 }

@@ -6,7 +6,12 @@
     { "path": "ex04_runtime_stats" },
     { "path": "ex07_time_slicer" },
     { "path": "ex08_avr_isr_nesting" },
-    { "path": "ex09_rtos_isr_nesting" }
+    { "path": "ex09_rtos_isr_nesting" },
+    { "path": "ex10_counting_semaphore" },
+    { "path": "ex11_mutex" },
+    { "path": "ex12_mars_pathfinder" },
+    { "path": "ex13_queue_isr" },
+    { "path": "ex14_deadlock" }
   ],
   "extensions": {
     "recommendations": [

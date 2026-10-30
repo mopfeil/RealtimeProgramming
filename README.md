@@ -52,6 +52,12 @@ Without access to wokwi.com, use the copies in `examples_vscode/` (built locally
 
 Examples:
 - `ex01`–`ex04`: FreeRTOS (tasks, ISR + semaphore, queue, run-time statistics)
+- `ex10`–`ex14`: synchronization (chapters `05-synchronization.tex`, `06-queues.tex`), each with DIP switches that select the faulty and the correct variant and a serial output:
+  - `ex10_counting_semaphore`: bursts of events from a timer ISR, binary semaphore loses events, counting semaphore does not
+  - `ex11_mutex`: two tasks print on the serial port, without and with a mutex
+  - `ex12_mars_pathfinder`: the Mars Pathfinder priority inversion (bus, watchdog, comm and meteo task), binary semaphore vs. mutex with priority inheritance
+  - `ex13_queue_isr`: timer ISR → queue → filter task → queue → log task; priorities, timeouts, lost samples
+  - `ex14_deadlock`: two mutexes in opposite order, fixed lock order, timeout with back-off
 - `ex07_time_slicer`: binary time slicer without RTOS (TimerOne library), chapter `03-time-slicer.tex`. D0–D2 = pins 13/12/11 (slot jobs), D3 = pin 10 (ISR active); DIP switch 1 makes slot 2 longer than a time slice. Based on <https://wokwi.com/projects/414976138190111745>.
 
 ## EdSim51 examples (8051 assembler)

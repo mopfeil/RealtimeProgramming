@@ -1,6 +1,6 @@
 # Wokwi examples for VS Code
 
-Copies of the Wokwi examples in `../examples/` (`ex01`–`ex04`, `ex07`–`ex09`) that run in the
+Copies of the Wokwi examples in `../examples/` (`ex01`–`ex04`, `ex07`–`ex14`) that run in the
 **Wokwi for VS Code** extension instead of the browser simulator on wokwi.com.
 
 The difference to the browser: Wokwi for VS Code does **not compile** anything.
@@ -25,7 +25,7 @@ Each example folder is a self-contained PlatformIO project:
 
 Libraries replace `libraries.txt`:
 
-- FreeRTOS examples (`ex01`–`ex04`, `ex09`) link the patched library directly from `../lib/FreeRTOS`
+- FreeRTOS examples (`ex01`–`ex04`, `ex09`–`ex14`) link the patched library directly from `../lib/FreeRTOS`
   (`lib_deps = symlink://../../lib/FreeRTOS`). Changes to the library take effect on the next build;
   no upload to wokwi.com and no library id are needed.
 - `ex07_time_slicer` gets `TimerOne` from the PlatformIO registry.
@@ -73,8 +73,8 @@ patched FreeRTOS library and is harmless.
 
 `F1` → **Wokwi: Start Simulator**. A tab with the circuit opens and the simulation starts.
 
-- Click parts to interact: push button in `ex02`, DIP switch 1 in `ex07`.
-- Serial output (`ex04`, `ex07`) appears in the VS Code terminal panel; you can also type input there.
+- Click parts to interact: push button in `ex02`, DIP switches in `ex07` and `ex09`–`ex14`, potentiometer in `ex13`.
+- Serial output (`ex04`, `ex07`, `ex10`–`ex14`) appears in the VS Code terminal panel; you can also type input there.
 - The simulation runs only while the simulator tab is visible. Keep it open, e.g. in a split editor next to the code.
 - Pause/resume with the button in the simulator tab.
 
@@ -241,6 +241,31 @@ longer fits.
 
 While the program is stopped, the whole simulated CPU stops, including the timers: when you continue,
 the program carries on as if there had been no pause.
+
+## Synchronization examples (ex10–ex14)
+
+Examples for chapter 5 (synchronization) and 6 (queues). Each one runs a faulty and a correct variant,
+selected with the DIP switches while the simulation runs, and prints what happens on the serial monitor.
+Scheduler tick: 16 ms. Trace pins on the logic analyzer as usual (HIGH while the task runs).
+
+| Folder | DIP switches | Serial output | Logic analyzer |
+|--------|--------------|---------------|----------------|
+| `ex10_counting_semaphore` | 1: OFF binary, ON counting semaphore | per burst of 5 events: `given`, `failed`, `handled` | D0 ISR, D1 Handler, D2 Report; LED 13: events lost |
+| `ex11_mutex` | 1: ON = use the mutex | the status and alarm lines, mixed up without the mutex (9600 baud) | D0 Status, D1 Alarm, D2 Status holds the mutex |
+| `ex12_mars_pathfinder` | 1: OFF binary semaphore (Pathfinder), ON mutex with priority inheritance (the fix) | longest wait of the bus task per second, `SYSTEM RESET` from the watchdog | D0 Bus, D1 Comm, D2 Met, D3 Met holds the lock; LED 13: reset |
+| `ex13_queue_isr` | 1: slow filter (overload), 2: sensor silent (timeouts) | `mean`, `fill` of the sample queue, `wait` on the log queue, `lost`, `timeouts` (9600 baud) | D0 ISR, D1 Filter, D2 Log; LED 13: sample lost |
+| `ex14_deadlock` | 1: ON = opposite lock order, 2: ON = timeout and back-off | progress counters, or `DEADLOCK?` with who holds and waits for what | D0 Meas, D1 Disp; LEDs 4/5: progress, LED 13: no progress |
+
+What to look for:
+
+- `ex12`: once per second (tick 64k+1) the comm task wakes while the meteo task holds the bus lock and the bus task waits.
+  Without inheritance the comm task runs its 300 ms first: the bus task waits about 300 ms, the watchdog reports two resets.
+  With the mutex the meteo task finishes its critical section with priority 3 first: the bus task waits about 4 ms.
+  In the waveform, compare D1 (Comm) and D3 (lock held) around this tick.
+- `ex14`: the deadlock is permanent: both tasks wait without timeout. Changing the switches does not help any more;
+  restart the simulation. With switch 2 the display task gives up after 3 ticks and tries again (`retries`).
+- `ex13`: with switch 1 the filter task needs 30 ms per 20 ms sample; switch it off again to see how many samples were lost.
+  Exercise: set `LOG_BAUD` to 4800, the log task becomes too slow on average and the queues overflow.
 
 ## Command line (without VS Code)
 

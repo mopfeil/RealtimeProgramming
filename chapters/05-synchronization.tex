@@ -1,12 +1,139 @@
 \section{Synchronization}
+\label{sec:sync}
 
-\subsection{Semaphores}
-\begin{frame}{Semaphores: signalling between tasks and ISRs}
+% ---------------------------------------------------------------------------
+\subsection{Why synchronization?}
+\begin{frame}{Why synchronization?}
+  Tasks and ISRs share the CPU, memory and peripherals. Three kinds of problems:
   \begin{itemize}
-    \item A \emph{binary semaphore} signals an event: one side \texttt{Give}s, the other \texttt{Take}s.
-    \item The waiting task is \emph{Blocked}, uses no CPU, and becomes Ready when the semaphore is given.
-    \item ISRs use \texttt{xSemaphoreGiveFromISR()} and defer the real work to a task (``deferred interrupt processing'').
-    \item \emph{Counting semaphores} count events or manage a pool of resources.
+    \item \textbf{Mutual exclusion}: a resource (variable, buffer, UART, I2C bus) may be used by only one task at a time $\rightarrow$ mutex, critical section.
+    \item \textbf{Control flow}: a task must wait until something has happened (an interrupt, another task finished) $\rightarrow$ semaphore, task notification.
+    \item \textbf{Data flow}: data must get from a producer to a consumer $\rightarrow$ queue (Chapter~\ref{sec:queues}).
+  \end{itemize}
+  All of them make a task \emph{Blocked}: it uses no CPU until the event arrives or a timeout expires.
+\end{frame}
+
+\begin{frame}[fragile]{Race condition: \texttt{counter++} is not atomic}
+  \begin{columns}[T]
+    \begin{column}{0.42\textwidth}
+\begin{lstlisting}
+volatile uint16_t counter;
+counter++;   // in two tasks
+\end{lstlisting}
+\begin{lstlisting}[language={},numbers=none]
+lds  r24, counter     ; read
+lds  r25, counter+1
+adiw r24, 1           ; modify
+sts  counter+1, r25   ; write
+sts  counter, r24
+\end{lstlisting}
+    \end{column}
+    \begin{column}{0.56\textwidth}
+      \small
+      \begin{itemize}
+        \item A tick between \emph{read} and \emph{write} switches to the other task, which increments too. When the first task continues, it writes its old value $+1$: one increment is lost.
+        \item The result depends on the timing: a \emph{race condition}. Rare, not reproducible, hard to debug.
+        \item The code between read and write is a \emph{critical section}: it must run without interference from anybody who uses the same data.
+      \end{itemize}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{Protecting a critical section}
+  \begin{center}\small
+  \begin{tabular}{@{}p{0.33\textwidth}p{0.29\textwidth}p{0.30\textwidth}@{}}
+    \toprule
+    Mechanism & Blocks & Use for \\
+    \midrule
+    \texttt{taskENTER\_CRITICAL()} / \texttt{taskEXIT\_CRITICAL()} & all interrupts and all tasks & a few instructions, data shared with an ISR \\
+    \texttt{vTaskSuspendAll()} / \texttt{xTaskResumeAll()} & the scheduler (ISRs still run) & short sections without ISR data \\
+    Mutex & only the tasks that want the same resource & longer sections, I/O \\
+    \bottomrule
+  \end{tabular}
+  \end{center}
+  \begin{itemize}
+    \item The cheaper the mechanism, the more it delays others: a critical section adds its length to the latency of \emph{every} interrupt.
+    \item Never block (delay, wait on a queue) inside a critical section or with the scheduler suspended.
+  \end{itemize}
+\end{frame}
+
+\scriptonly{%
+The three-step pattern read--modify--write is the root of most synchronization errors. On the 8-bit AVR even reading a 16-bit variable takes two instructions, so a task can read a half-updated value written by an ISR. Disabling the interrupts is the only protection against an ISR, because an ISR cannot wait for a task. Against other tasks, a mutex is the better choice: it lets all tasks that do not use the resource, and all interrupts, run on.
+}
+
+% ---------------------------------------------------------------------------
+\subsection{Semaphores}
+\begin{frame}{How a semaphore works}
+  A semaphore is a \emph{counter} plus a \emph{list of waiting tasks}.
+  \begin{columns}[T]
+    \begin{column}{0.5\textwidth}
+      \textbf{Take} (P, wait, acquire)
+      \begin{itemize}
+        \item counter $> 0$: decrement, continue.
+        \item counter $= 0$: block, enter the waiting list (with timeout).
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.5\textwidth}
+      \textbf{Give} (V, signal, release)
+      \begin{itemize}
+        \item tasks waiting: make the one with the \emph{highest priority} Ready (equal priority: the one waiting longest).
+        \item nobody waiting: increment (up to the maximum).
+      \end{itemize}
+    \end{column}
+  \end{columns}
+  \begin{itemize}
+    \item \textbf{Binary semaphore}: maximum 1, created empty. Signals an event.
+    \item \textbf{Counting semaphore}: maximum $n$. Counts events, or manages a pool of $n$ identical resources (initial count $n$).
+    \item In FreeRTOS: a queue with item size 0; the counter is the number of items in the queue.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}[fragile]{Semaphore API}
+\begin{lstlisting}
+SemaphoreHandle_t ev  = xSemaphoreCreateBinary();          // empty
+SemaphoreHandle_t cnt = xSemaphoreCreateCounting(10, 0);   // max 10, count 0
+
+xSemaphoreGive(ev);                           // task: signal
+xSemaphoreGiveFromISR(ev, &woken);            // ISR: signal, never blocks
+if (xSemaphoreTake(ev, pdMS_TO_TICKS(500)) == pdTRUE) {
+  // event arrived within 500 ms
+} else {
+  // timeout: handle the missing event
+}
+\end{lstlisting}
+\end{frame}
+
+\begin{frame}{Semaphores and priorities}
+  \begin{itemize}
+    \item \texttt{Give} is a \emph{scheduling point}: if the woken task has a higher priority than the giver, it preempts the giver immediately, inside \texttt{xSemaphoreGive()}.
+    \item If it has a lower priority, it only becomes Ready and runs when the giver blocks.
+    \item Several tasks waiting on one semaphore: the highest priority one gets it, independent of the order in which they started waiting.
+    \item A semaphore has \emph{no owner}: any task may give it. Therefore the RTOS cannot know whom to help when a high priority task waits $\rightarrow$ no priority inheritance (see mutex).
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Blocking and timeouts}
+  Every take/receive/send that may wait has a parameter \texttt{xTicksToWait}:
+  \begin{itemize}
+    \item \texttt{0}: do not wait (poll). Returns \texttt{pdFALSE} at once if not available.
+    \item $n$: wait at most $n$ ticks. The task is Blocked, uses no CPU, and returns \texttt{pdFALSE} after the timeout.
+    \item \texttt{portMAX\_DELAY}: wait forever (needs \texttt{INCLUDE\_vTaskSuspend 1}).
+  \end{itemize}
+  \begin{alertblock}{Tick resolution}
+    The Arduino FreeRTOS port ticks every 16\,ms (\texttt{configTICK\_RATE\_HZ} = 62). \texttt{pdMS\_TO\_TICKS(10)} is 0: \emph{no} wait at all. A timeout of $n$ ticks expires after $n-1$ to $n$ tick periods, because the current tick is already partly over.
+  \end{alertblock}
+  \begin{itemize}
+    \item Always check the return value. A timeout is a detected error, \texttt{portMAX\_DELAY} can hide one forever.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Semaphores and ISRs}
+  \begin{itemize}
+    \item An ISR must never block: only the \texttt{...FromISR()} functions, and they have no timeout.
+    \item \texttt{xSemaphoreGiveFromISR(s, \&woken)} sets \texttt{woken = pdTRUE} if it made a task Ready with a higher priority than the interrupted task. The ISR then requests a context switch at its end (\texttt{portYIELD\_FROM\_ISR(woken)}; in the AVR port \texttt{taskYIELD()}): the ISR returns directly into the woken task.
+    \item \textbf{Deferred interrupt processing}: the ISR only acknowledges the hardware and gives the semaphore, a task does the work. The task is scheduled like any other, by priority.
+    \item A binary semaphore stores at most \emph{one} event. If the ISR gives faster than the task takes, events are lost $\rightarrow$ counting semaphore, or a queue that also carries the data.
+    \item A Give from an ISR fails if the semaphore is full. The ISR cannot wait; count the failure.
   \end{itemize}
 \end{frame}
 
@@ -18,26 +145,356 @@
 Keep the ISR short: it gives the semaphore and requests a context switch if a higher-priority task was woken. The latency from the button edge to the first instruction of the task is exactly the kind of timing we measure in Chapter~\ref{sec:timing}.
 }
 
-\subsection{Mutexes and priority inversion}
+\begin{frame}[fragile]{Wokwi example 10: binary vs.\ counting semaphore}
+  \begin{columns}[T]
+    \begin{column}{0.52\textwidth}
+      \small
+      \begin{itemize}
+        \item Timer~1 ISR: every 500\,ms a burst of 5 events, 1\,ms apart, one \texttt{xSemaphoreGiveFromISR()} each.
+        \item Handler task (prio~2): 20\,ms CPU per event.
+        \item DIP switch~1: binary or counting semaphore.
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.46\textwidth}
+      \footnotesize
+\begin{verbatim}
+binary  : given 2, failed 3, handled 2
+counting: given 5, failed 0, handled 5
+\end{verbatim}
+      \begin{itemize}
+        \item Binary: event 1 wakes the Handler, event 2 sets the semaphore, events 3--5 are lost.
+        \item Counting: the count stores the 4 pending events.
+      \end{itemize}
+    \end{column}
+  \end{columns}
+  \medskip
+  Logic analyzer: D0 = ISR, D1 = Handler, D2 = Report. LED~13: events lost.
+\end{frame}
+
+\scriptonly{%
+\wokwiexample{ex10_counting_semaphore}{Events from an ISR: binary vs.\ counting semaphore}{lst:ex10}
+
+The Handler in Listing~\ref{lst:ex10} waits with a timeout of one tick instead of \texttt{portMAX\_DELAY}, because the ISR switches between the two semaphores at the start of each burst. On the logic analyzer, the first ISR pulse of a burst is followed directly by the Handler trace: the ISR returns into the Handler, which has the higher priority than the interrupted Idle or Report task. With the counting semaphore the Handler trace stays high for $5 \times 20 = 100$\,ms, with the binary semaphore for 40\,ms. A counting semaphore only helps if its maximum count covers the longest burst; for events that carry data, a queue (example~13) is the better choice. FreeRTOS also offers \emph{task notifications} (\texttt{vTaskNotifyGiveFromISR()}, \texttt{ulTaskNotifyTake()}, used in example~9): a counting semaphore built into the TCB of one task, faster and without an extra object, but with only one possible receiver.
+}
+
+% ---------------------------------------------------------------------------
+\subsection{Mutexes}
 \begin{frame}{Semaphore vs.\ mutex}
   \begin{itemize}
-    \item \textbf{Semaphore}: signalling. Different tasks give and take.
-    \item \textbf{Mutex}: protects a shared resource. The same task takes and gives, always in this order.
-    \item Both are implemented on top of queues in FreeRTOS.
+    \item \textbf{Semaphore}: signalling. Different tasks (or an ISR) give and take.
+    \item \textbf{Mutex} (mutual exclusion): protects a shared resource. The same task takes and gives, always in this order:
   \end{itemize}
-\end{frame}
-
-\begin{frame}{Priority inversion and inheritance}
+  \begin{center}\small
+  \begin{tabular}{@{}lll@{}}
+    \toprule
+    & Binary semaphore & Mutex \\
+    \midrule
+    created & empty & available \\
+    owner & none & the task that took it \\
+    priority inheritance & no & yes \\
+    from an ISR & give: yes & no \\
+    take twice in the same task & blocks & blocks (recursive mutex: counts) \\
+    \bottomrule
+  \end{tabular}
+  \end{center}
   \begin{itemize}
-    \item Low task $L$ holds a mutex, high task $H$ waits for it, medium task $M$ preempts $L$ $\Rightarrow$ $H$ is blocked by $M$ for an unbounded time.
-    \item \textbf{Priority inheritance}: $L$ temporarily inherits $H$'s priority while $H$ waits. FreeRTOS mutexes do this; binary semaphores do not.
+    \item Both are implemented on top of queues in FreeRTOS; the mutex stores its holder (\texttt{pxMutexHolder}).
   \end{itemize}
 \end{frame}
 
+\begin{frame}[fragile]{Using a mutex}
+\begin{lstlisting}
+SemaphoreHandle_t uartMutex = xSemaphoreCreateMutex();
+
+if (xSemaphoreTake(uartMutex, pdMS_TO_TICKS(200)) == pdTRUE) {
+  Serial.println(line);           // critical section: keep it short,
+  xSemaphoreGive(uartMutex);      // no delays, no waiting on other objects
+} else {
+  timeouts++;                     // resource not available in time
+}
+\end{lstlisting}
+  \begin{itemize}
+    \item Every path that takes the mutex must give it back, including error paths.
+    \item Do not use a mutex in an ISR: an ISR cannot wait, and it cannot inherit a priority.
+    \item A task that calls a function which takes the same mutex again deadlocks with itself $\rightarrow$ \texttt{xSemaphoreCreateRecursiveMutex()} with \texttt{xSemaphoreTakeRecursive()}/\texttt{GiveRecursive()}.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Mutexes and priorities}
+  \begin{itemize}
+    \item Waiting tasks are ordered by priority: the highest priority waiter gets the mutex next.
+    \item \textbf{Priority inheritance}: while a higher priority task waits for the mutex, the holder runs with the priority of that task. This shortens the waiting time of the high priority task.
+    \item The holder gets its own priority back when it gives the mutex (in FreeRTOS: when it has given \emph{all} mutexes it holds), or when the waiting task gives up after its timeout.
+    \item Giving a mutex is a scheduling point: the waiting high priority task takes over at once.
+    \item The time a task waits for a mutex is \emph{blocking time} $B_i$; it enters the response time analysis of Chapter~\ref{sec:schedulability}: $R_i = C_i + B_i + \sum_{j \in hp(i)} \lceil R_i / T_j \rceil C_j$.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}[fragile]{Wokwi example 11: the serial port as shared resource}
+  \begin{columns}[T]
+    \begin{column}{0.48\textwidth}
+      \small
+      \begin{itemize}
+        \item Status (prio~1) prints a long line again and again, Alarm (prio~2) a short one every 300\,ms. 9600\,baud: 80\,ms per status line.
+        \item DIP switch~1 OFF: no protection, Alarm preempts Status in the middle of \texttt{print()}.
+        \item ON: both take a mutex. Alarm waits up to 80\,ms; meanwhile Status runs with priority~2.
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.50\textwidth}
+      \scriptsize
+\begin{verbatim}
+switch OFF:
+[status] temperature=21.5 C pressure=10
+[ALARM 7] door open, timeouts 0
+13 hPa humidity=45 % battery=12.6 V
+
+switch ON:
+[status] temperature=21.5 C pressure=1013
+  hPa humidity=45 % battery=12.6 V
+[ALARM 8] door open, timeouts 0
+\end{verbatim}
+      \small Logic analyzer: D0 = Status, D1 = Alarm, D2 = Status holds the mutex.
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\scriptonly{%
+\wokwiexample{ex11_mutex}{Two tasks share the serial port}{lst:ex11}
+
+\texttt{Serial.print()} copies the characters into a 64-byte transmit buffer that the UART interrupt empties at 9600\,baud, one character per millisecond. A longer line fills the buffer, and \texttt{print()} waits inside a busy loop until there is space again. A task preempted at this moment leaves half a line behind, and the next task's text continues right after it. In Listing~\ref{lst:ex11} the status task holds the mutex until \texttt{Serial.flush()} has sent the last character, so that the line is really complete on the wire. The alarm task uses a timeout of 200\,ms, longer than the 80\,ms the status task holds the mutex, and counts the cases in which it got no access: with a shorter timeout (e.g.\ \texttt{pdMS\_TO\_TICKS(50)}) it gives up regularly. Note that the alarm is now delayed by up to one status line: protecting a resource with a mutex turns the length of every critical section into blocking time for the other users.
+}
+
+% ---------------------------------------------------------------------------
+\subsection{Priority inversion}
+\begin{frame}{Priority inversion}
+  \begin{itemize}
+    \item A high priority task $H$ waits for a resource held by a low priority task $L$: it runs \emph{as if} it had the low priority. Unavoidable, but \emph{bounded} by the length of $L$'s critical section.
+    \item \textbf{Unbounded} priority inversion: a medium priority task $M$, which does not need the resource, preempts $L$. $H$ now waits for $M$ as well, for an arbitrary time.
+  \end{itemize}
+  \begin{center}
+  \begin{tikzpicture}[x=0.9cm,y=0.5cm,font=\scriptsize]
+    \foreach \y/\n in {3/H,1.5/M,0/L} \node[left] at (0,\y+0.3) {$\n$};
+    \draw[->] (0,-0.3) -- (11,-0.3) node[right]{$t$};
+    % L: blue = without lock, red = holds the lock
+    \draw[fill=blue!20] (0,0) rectangle (1,0.6);
+    \draw[fill=red!40] (1,0) rectangle (2,0.6);
+    \draw[fill=red!40] (2.5,0) rectangle (3,0.6);
+    \draw[fill=red!40] (7,0) rectangle (8,0.6);
+    \draw[fill=blue!20] (9.5,0) rectangle (10.5,0.6);
+    % H
+    \draw[fill=green!30] (2,3) rectangle (2.5,3.6);
+    \draw[pattern=north east lines,draw=gray] (2.5,3) rectangle (8,3.6);
+    \draw[fill=green!30] (8,3) rectangle (9.5,3.6);
+    % M
+    \draw[fill=orange!40] (3,1.5) rectangle (7,2.1) node[midway]{$M$ does not need the lock};
+    \node[below] at (1,-0.3) {lock};
+    \node[below] at (8,-0.3) {unlock};
+    \node[left] at (2,3.3) {wants lock};
+    \draw[<->,red,thick] (2.5,4.1) -- (8,4.1) node[midway,above]{$H$ blocked: unbounded};
+  \end{tikzpicture}
+  \end{center}
+\end{frame}
+
+\begin{frame}{Case study: Mars Pathfinder, 1997}
+  \begin{columns}[T]
+    \begin{column}{0.56\textwidth}
+      \small
+      \begin{itemize}
+        \item Landed on Mars on July 4, 1997. A few days later: repeated \emph{total system resets}, each costing a day of data.
+        \item RTOS VxWorks, preemptive, fixed priorities. Components exchange data via the \emph{information bus}, shared memory protected by a mutex.
+        \item $H$: bus management \texttt{bc\_dist}, frequent. A watchdog task \texttt{bc\_sched} checks that it finished each cycle, otherwise: reset.
+        \item $M$: communication task, long-running.
+        \item $L$: meteorological data (ASI/MET), rare, publishes on the bus.
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.42\textwidth}
+      \small
+      \begin{itemize}
+        \item Rare combination: $L$ holds the bus mutex, $H$ waits, $M$ runs long $\Rightarrow$ $H$ misses its cycle $\Rightarrow$ watchdog $\Rightarrow$ reset.
+        \item JPL reproduced it on a replica on Earth with full tracing.
+        \item The mutex had been created with priority inheritance \emph{off}. The fix: switch it on, uploaded as a patch to the running spacecraft.
+        \item The resets had appeared in pre-launch tests and were dismissed as hardware glitches.
+      \end{itemize}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\scriptonly{%
+The Pathfinder story became widely known through a talk summary by Mike Jones (``What really happened on Mars?'', 1997) and the reply by Glenn Reeves, who led the flight software team, see \url{https://www.cs.cornell.edu/courses/cs614/1999sp/papers/pathfinder.html}. The mutex in question protected a list used by the inter-task communication of the information bus (VxWorks \texttt{select()} on pipes). Its creation parameter selected whether priority inheritance was used, and it was off. VxWorks contains a C interpreter that accepts commands at run time; with it, JPL changed the parameter on the spacecraft. Two lessons go beyond priority inversion. First, the watchdog did its job: it turned a timing error into a safe reset instead of a silent failure. Second, the trace and debug facilities left in the flight software made the diagnosis and the fix possible at all.
+}
+
+\begin{frame}{Priority inheritance bounds the inversion}
+  \begin{center}
+  \begin{tikzpicture}[x=0.9cm,y=0.5cm,font=\scriptsize]
+    \foreach \y/\n in {3/H,1.5/M,0/L} \node[left] at (0,\y+0.3) {$\n$};
+    \draw[->] (0,-0.3) -- (11,-0.3) node[right]{$t$};
+    \draw[fill=blue!20] (0,0) rectangle (1,0.6);
+    \draw[fill=red!40] (1,0) rectangle (2,0.6);
+    \draw[fill=red!70] (2.5,0) rectangle (4,0.6);
+    \node[below] at (3.25,-0.3) {$L$ runs with the priority of $H$};
+    \draw[fill=green!30] (2,3) rectangle (2.5,3.6);
+    \draw[pattern=north east lines,draw=gray] (2.5,3) rectangle (4,3.6);
+    \draw[fill=green!30] (4,3) rectangle (5.5,3.6);
+    \draw[fill=orange!40] (5.5,1.5) rectangle (9.5,2.1);
+    \draw[fill=blue!20] (9.5,0) rectangle (10.5,0.6);
+    \draw[dashed] (3,1.5) -- (3,2.1);
+    \node[right] at (3,1.8) {$M$ Ready, waits};
+    \draw[<->,red,thick] (2.5,4.1) -- (4,4.1) node[midway,above]{bounded};
+  \end{tikzpicture}
+  \end{center}
+  \begin{itemize}
+    \item Priority inheritance (FreeRTOS mutex): $L$ inherits $H$'s priority while $H$ waits; $M$ cannot preempt. $H$ waits at most for the rest of $L$'s critical section (per mutex and lower task).
+    \item Priority ceiling protocol: every mutex has a ceiling = highest priority of all its users; the holder runs at the ceiling from the moment it takes the mutex. Prevents chains and deadlocks, but FreeRTOS has no built-in support (emulate: \texttt{vTaskPrioritySet()}, or a critical section for very short accesses).
+    \item Avoid sharing: a \emph{gatekeeper task} owns the resource, the others send requests through a queue (Chapter~\ref{sec:queues}).
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Wokwi example 12: Mars Pathfinder on the Arduino}
+  \begin{columns}[T]
+    \begin{column}{0.50\textwidth}
+      \small
+      \begin{tabular}{@{}llll@{}}
+        \toprule
+        Task & Prio & Period & Work \\
+        \midrule
+        Bus (\texttt{bc\_dist}) & 3 & 8 ticks & lock, 2\,ms \\
+        Watch (\texttt{bc\_sched}) & 3 & 8 ticks & check \\
+        Comm & 2 & 64 ticks & 300\,ms \\
+        Met (ASI/MET) & 1 & 16 ticks & lock, 20\,ms \\
+        \bottomrule
+      \end{tabular}
+      \medskip
+
+      Fixed phases: Met takes the lock at tick $16k$; Bus wakes at $16k+1$ and finds it taken; at $64k+1$ Comm wakes too.
+    \end{column}
+    \begin{column}{0.48\textwidth}
+      \small
+      DIP switch~1 OFF: binary semaphore, no inheritance (as on Pathfinder):
+      \begin{itemize}
+        \item Bus waits $\approx$ 300\,ms for Comm, Watch: \texttt{SYSTEM RESET}, LED~13.
+      \end{itemize}
+      DIP switch~1 ON: mutex with inheritance (the fix):
+      \begin{itemize}
+        \item Met runs with prio~3 until it gives the lock, Bus waits $\approx$ 4\,ms, no reset.
+      \end{itemize}
+      Logic analyzer: D0 = Bus, D1 = Comm, D2 = Met, D3 = Met holds the lock.
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\scriptonly{%
+\wokwiexample{ex12_mars_pathfinder}{Priority inversion as on Mars Pathfinder}{lst:ex12}
+
+The tasks in Listing~\ref{lst:ex12} burn CPU time with \texttt{work()}, a loop of \texttt{\_delay\_us(1000)}. Unlike a loop on \texttt{millis()}, it does not advance while the task is preempted: 20\,ms of work are 20\,ms of CPU time, however long the task waits in between. The phases of the tasks are set with \texttt{vTaskDelayUntil()} relative to tick~0, so the critical situation occurs on purpose once per second instead of by chance, as it did on Mars. Even with the mutex the Bus task waits about 4\,ms at every tick $16k+1$: this is the bounded part of the inversion, the rest of Met's critical section. On the logic analyzer, look at tick $64k+1$: without inheritance the Comm trace (D1) is high for 300\,ms while D3 (lock held) stays high and Bus (D0) does not run; with inheritance, Met (D2) finishes its critical section first, then Bus runs, and only then Comm.
+}
+
+% ---------------------------------------------------------------------------
 \subsection{Deadlocks}
 \begin{frame}{Deadlocks}
+  Two or more tasks are blocked forever, each waiting for a resource held by another. Four conditions (Coffman, 1971), \emph{all} necessary:
+  \begin{enumerate}
+    \item \textbf{Mutual exclusion}: a resource can be held by one task only.
+    \item \textbf{Hold and wait}: a task holds one resource while it waits for another.
+    \item \textbf{No preemption}: a resource cannot be taken away from its holder.
+    \item \textbf{Circular wait}: $T_1$ waits for $T_2$, \dots, $T_n$ waits for $T_1$.
+  \end{enumerate}
+  Break one condition and no deadlock can occur.
+\end{frame}
+
+\begin{frame}[fragile]{Classic deadlock: two mutexes, opposite order}
+  \begin{columns}[T]
+    \begin{column}{0.48\textwidth}
+\begin{lstlisting}
+// Meas (prio 1)
+take(i2c);
+  readSensor();       // 20 ms
+  take(display);      // waits for Disp
+  ...
+\end{lstlisting}
+    \end{column}
+    \begin{column}{0.48\textwidth}
+\begin{lstlisting}
+// Disp (prio 2)
+take(display);
+  drawScreen();
+  take(i2c);          // waits for Meas
+  ...
+\end{lstlisting}
+    \end{column}
+  \end{columns}
   \begin{itemize}
-    \item Two or more tasks are blocked forever, each waiting for a resource held by another.
-    \item Avoidance: acquire resources in a fixed global order, use timeouts, keep critical sections short.
+    \item Meas holds I2C, Disp preempts it and takes Display, then waits for I2C. Meas (now with inherited priority~2) continues and waits for Display. Nobody can continue.
+    \item Priority inheritance does not help here: it shortens waiting, it does not resolve a cycle.
+    \item Deadlocks need a particular timing: they can stay hidden in tests for years.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Avoiding deadlocks}
+  \begin{itemize}
+    \item \textbf{Fixed global lock order} (breaks circular wait): number all mutexes, every task takes them in ascending order and gives them in reverse.
+    \item \textbf{Timeouts and back-off} (breaks hold and wait): take the second mutex with a timeout; on failure give back the first, wait, retry. Detects the problem, but costs time and may starve a task (livelock).
+    \item \textbf{One lock for both}, or take all resources at once.
+    \item \textbf{Gatekeeper task} (breaks mutual exclusion for the users): one task owns the resource, the others send requests through a queue.
+    \item Never wait for anything else (queue, delay, event) while holding a mutex.
+    \item Recursive mutex for functions that may lock a mutex the caller already holds.
+    \item ISRs: never wait. A task that disables interrupts and then waits blocks the whole system.
+    \item Detection: a watchdog that checks the progress of every task.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Wokwi example 14: deadlock and two ways out}
+  \begin{columns}[T]
+    \begin{column}{0.50\textwidth}
+      \small
+      \begin{itemize}
+        \item Meas (prio~1) every 10 ticks: I2C, 20\,ms, then Display.
+        \item Disp (prio~2) one tick later: Display, then I2C.
+        \item Watch (prio~3) checks every 500\,ms that both made progress.
+      \end{itemize}
+      Logic analyzer: D0 = Meas, D1 = Disp. LEDs 4/5 toggle per cycle, LED~13: no progress.
+    \end{column}
+    \begin{column}{0.48\textwidth}
+      \small
+      \begin{tabular}{@{}l>{\raggedright\arraybackslash}p{0.62\textwidth}@{}}
+        \toprule
+        Switches & Result \\
+        \midrule
+        1 OFF & fixed order I2C $\rightarrow$ Display: runs \\
+        1 ON, 2 OFF & opposite order, \texttt{portMAX\_DELAY}: \texttt{DEADLOCK}, forever \\
+        1 ON, 2 ON & opposite order, timeout 3 ticks, back-off: runs, \texttt{retries} grows \\
+        \bottomrule
+      \end{tabular}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\scriptonly{%
+\wokwiexample{ex14_deadlock}{Deadlock with two mutexes, lock order and timeout}{lst:ex14}
+
+In the deadlocked state of Listing~\ref{lst:ex14}, the watchdog prints
+\texttt{DEADLOCK? Meas holds I2C, waits for Display | Disp holds Display, waits for I2C}: the circular wait of the fourth Coffman condition. Both trace pins stay low, and only the Idle and the Watch task run. Changing the switches no longer helps, because both tasks are blocked inside \texttt{xSemaphoreTake()} without a timeout; restart the simulation. With the timeout (switch~2) Disp gives up after 3 ticks, returns the display mutex, and Meas completes its cycle; Disp succeeds on its next attempt. The cost is visible on the logic analyzer: Disp finishes its cycle about 4 ticks late in every period. With the fixed lock order (switch~1 OFF) Disp only waits for the rest of Meas' critical section, while Meas runs with the inherited priority~2.
+}
+
+% ---------------------------------------------------------------------------
+\subsection{Summary}
+\begin{frame}{Which mechanism for which purpose?}
+  \begin{center}\small
+  \begin{tabular}{@{}lllll@{}}
+    \toprule
+    Mechanism & Purpose & Owner & Prio.\ inherit. & From ISR \\
+    \midrule
+    critical section & very short, data shared with ISRs & -- & -- & (\texttt{...FROM\_ISR}) \\
+    binary semaphore & signal an event & no & no & give \\
+    counting semaphore & count events, resource pool & no & no & give \\
+    task notification & signal one specific task & no & no & give \\
+    mutex & mutual exclusion & yes & yes & no \\
+    recursive mutex & mutual exclusion, nested calls & yes & yes & no \\
+    queue & pass data, gatekeeper & no & no & send/receive \\
+    \bottomrule
+  \end{tabular}
+  \end{center}
+  \begin{itemize}
+    \item Every waiting function takes a timeout: use it, and handle the failure.
+    \item Keep critical sections short, never wait inside one, lock in a fixed order.
   \end{itemize}
 \end{frame}
