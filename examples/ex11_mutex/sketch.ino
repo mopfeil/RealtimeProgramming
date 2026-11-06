@@ -17,6 +17,7 @@
 // Alarm waits at most 200 ms for the mutex. If it gets no access in time it
 // counts a timeout (Status holds the mutex for about 80 ms, so this should
 // not happen; make the timeout shorter than the line to provoke it).
+// The switch is read on every pass, so it can be flipped while running.
 //
 // Logic analyzer: D0 = pin 10 (Status), D1 = pin 11 (Alarm),
 //                 D2 = pin 12 (HIGH while Status holds the mutex).
@@ -39,10 +40,13 @@ void statusTask(void *pv) {
     bool locked = useMutex() && xSemaphoreTake(serialMutex, portMAX_DELAY);
     digitalWrite(PIN_HOLDS, locked);
     Serial.println(F("[status] temperature=21.5 C pressure=1013 hPa humidity=45 % battery=12.6 V"));
-    Serial.flush();                 // wait until the line is on the wire
     digitalWrite(PIN_HOLDS, LOW);
     if (locked) xSemaphoreGive(serialMutex);   // the taker gives it back
-    vTaskDelay(1);                  // pause one tick
+    // No delay and no Serial.flush(): the TX buffer stays full, so Status
+    // is almost always waiting inside print() and the alarm (which wakes on
+    // a tick) catches it at a different point of the line every time.
+    // With a pause aligned to the tick, the alarm would always arrive while
+    // the line was already complete in the buffer and nothing would mix.
   }
 }
 
