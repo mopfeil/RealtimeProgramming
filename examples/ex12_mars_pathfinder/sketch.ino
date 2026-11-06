@@ -27,8 +27,10 @@
 // Serial (115200): one line per 64 ticks with the longest wait of Bus for
 // the lock, and one line per reset.
 //
-// Logic analyzer: D0 = pin 10 (Bus), D1 = pin 11 (Comm), D2 = pin 12 (Met),
-//                 D3 = pin 9 (HIGH while Met holds the lock).
+// Logic analyzer (channel names in diagram.json; HIGH while the task runs):
+//   D0 = pin 10 Bus     D1 = pin 11 Comm    D2 = pin 12 Met
+//   D3 = pin 9  HIGH while Met holds the lock
+//   D4 = pin 8  Watch   D5 = pin 7  Idle    D6 = pin 13 reset LED
 // LED pin 13: on from a reset until the end of the next Comm period
 // without one.
 
@@ -41,6 +43,8 @@ const uint8_t PIN_BUS     = 10;     // trace pins, driven by the scheduler
 const uint8_t PIN_COMM    = 11;
 const uint8_t PIN_MET     = 12;
 const uint8_t PIN_HOLDS   = 9;
+const uint8_t PIN_WATCH   = 8;
+const uint8_t PIN_IDLE    = 7;
 const uint8_t PIN_RESET   = 13;
 
 const TickType_t BUS_PERIOD  = 8;
@@ -135,6 +139,8 @@ void setup() {
   pinMode(PIN_COMM, OUTPUT);
   pinMode(PIN_MET, OUTPUT);
   pinMode(PIN_HOLDS, OUTPUT);
+  pinMode(PIN_WATCH, OUTPUT);
+  pinMode(PIN_IDLE, OUTPUT);
   pinMode(PIN_RESET, OUTPUT);
 
   busSem = xSemaphoreCreateBinary();
@@ -145,11 +151,21 @@ void setup() {
   TaskHandle_t h;
   xTaskCreate(busTask, "Bus", 128, NULL, 3, &h);
   vTaskSetApplicationTaskTag(h, (TaskHookFunction_t)PIN_BUS);
-  xTaskCreate(watchTask, "Watch", 192, NULL, 3, NULL);
+  xTaskCreate(watchTask, "Watch", 192, NULL, 3, &h);
+  vTaskSetApplicationTaskTag(h, (TaskHookFunction_t)PIN_WATCH);
   xTaskCreate(commTask, "Comm", 128, NULL, 2, &h);
   vTaskSetApplicationTaskTag(h, (TaskHookFunction_t)PIN_COMM);
   xTaskCreate(metTask, "Met", 128, NULL, 1, &h);
   vTaskSetApplicationTaskTag(h, (TaskHookFunction_t)PIN_MET);
 }
 
-void loop() { }
+// loop() runs in the idle task: tag it on the first call, so that its
+// trace pin follows the scheduler from now on like those of the others
+void loop() {
+  static bool tagged = false;
+  if (!tagged) {
+    vTaskSetApplicationTaskTag(NULL, (TaskHookFunction_t)PIN_IDLE);
+    digitalWrite(PIN_IDLE, HIGH);   // already switched in: set by hand once
+    tagged = true;
+  }
+}
