@@ -15,7 +15,9 @@
       "id": "logic1",
       "top": 260,
       "left": 40,
-      "attrs": {}
+      "attrs": {
+        "channelNames": "Meas,Disp,Watch,Idle,Deadlock,D5,D6,D7"
+      }
     },
     {
       "type": "wokwi-dip-switch-8",
@@ -66,6 +68,24 @@
       "uno:11",
       "logic1:D1",
       "blue",
+      []
+    ],
+    [
+      "uno:8",
+      "logic1:D2",
+      "yellow",
+      []
+    ],
+    [
+      "uno:7",
+      "logic1:D3",
+      "white",
+      []
+    ],
+    [
+      "uno:13",
+      "logic1:D4",
+      "red",
       []
     ],
     [

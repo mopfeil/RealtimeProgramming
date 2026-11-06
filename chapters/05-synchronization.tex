@@ -451,7 +451,7 @@ take(display);
         \item Disp (prio~2) one tick later: Display, then I2C.
         \item Watch (prio~3) checks every 500\,ms that both made progress.
       \end{itemize}
-      Logic analyzer: D0 = Meas, D1 = Disp. LEDs 4/5 toggle per cycle, LED~13: no progress.
+      Logic analyzer: D0 = Meas, D1 = Disp, D2 = Watch, D3 = Idle, D4 = LED~13. LEDs 4/5 toggle per cycle, LED~13: no progress.
     \end{column}
     \begin{column}{0.48\textwidth}
       \small
@@ -472,7 +472,7 @@ take(display);
 \wokwiexample{ex14_deadlock}{Deadlock with two mutexes, lock order and timeout}{lst:ex14}
 
 In the deadlocked state of Listing~\ref{lst:ex14}, the watchdog prints
-\texttt{DEADLOCK? Meas holds I2C, waits for Display | Disp holds Display, waits for I2C}: the circular wait of the fourth Coffman condition. Both trace pins stay low, and only the Idle and the Watch task run. Changing the switches no longer helps, because both tasks are blocked inside \texttt{xSemaphoreTake()} without a timeout; restart the simulation. With the timeout (switch~2) Disp gives up after 3 ticks, returns the display mutex, and Meas completes its cycle; Disp succeeds on its next attempt. The cost is visible on the logic analyzer: Disp finishes its cycle about 4 ticks late in every period. With the fixed lock order (switch~1 OFF) Disp only waits for the rest of Meas' critical section, while Meas runs with the inherited priority~2.
+\texttt{DEADLOCK? Meas holds I2C, waits for Display | Disp holds Display, waits for I2C}: the circular wait of the fourth Coffman condition. Both trace pins stay low, and only the Idle (D3) and the Watch task (D2) run. Changing the switches no longer helps, because both tasks are blocked inside \texttt{xSemaphoreTake()} without a timeout; restart the simulation. With the timeout (switch~2) Disp gives up after 3 ticks, returns the display mutex, and Meas completes its cycle; Disp succeeds on its next attempt. The cost is visible on the logic analyzer: Disp finishes its cycle about 4 ticks late in every period. With the fixed lock order (switch~1 OFF) Disp only waits for the rest of Meas' critical section, while Meas runs with the inherited priority~2.
 }
 
 % ---------------------------------------------------------------------------

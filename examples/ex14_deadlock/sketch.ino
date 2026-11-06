@@ -19,7 +19,9 @@
 // Watch (prio 3) checks every 500 ms that both tasks made progress and
 // prints the counters, or which task holds and waits for what.
 //
-// Logic analyzer: D0 = pin 10 (Meas), D1 = pin 11 (Disp).
+// Logic analyzer (channel names in diagram.json; HIGH while the task runs):
+//   D0 = pin 10 Meas    D1 = pin 11 Disp    D2 = pin 8 Watch
+//   D3 = pin 7  Idle    D4 = pin 13 deadlock LED
 // LEDs: pin 4 toggles per Meas cycle, pin 5 per Disp cycle,
 //       pin 13 on while deadlocked.
 
@@ -31,6 +33,8 @@ const uint8_t PIN_OPPOSITE = 2;     // DIP switch 1, ON = LOW
 const uint8_t PIN_TIMEOUT  = 3;     // DIP switch 2, ON = LOW
 const uint8_t PIN_MEAS     = 10;    // trace pins, driven by the scheduler
 const uint8_t PIN_DISP     = 11;
+const uint8_t PIN_WATCH    = 8;
+const uint8_t PIN_IDLE     = 7;
 const uint8_t PIN_LED_MEAS = 4;
 const uint8_t PIN_LED_DISP = 5;
 const uint8_t PIN_DEADLOCK = 13;
@@ -143,6 +147,8 @@ void setup() {
   pinMode(PIN_TIMEOUT, INPUT_PULLUP);
   pinMode(PIN_MEAS, OUTPUT);
   pinMode(PIN_DISP, OUTPUT);
+  pinMode(PIN_WATCH, OUTPUT);
+  pinMode(PIN_IDLE, OUTPUT);
   pinMode(PIN_LED_MEAS, OUTPUT);
   pinMode(PIN_LED_DISP, OUTPUT);
   pinMode(PIN_DEADLOCK, OUTPUT);
@@ -155,7 +161,17 @@ void setup() {
   vTaskSetApplicationTaskTag(h, (TaskHookFunction_t)PIN_MEAS);
   xTaskCreate(dispTask, "Disp", 128, NULL, 2, &h);
   vTaskSetApplicationTaskTag(h, (TaskHookFunction_t)PIN_DISP);
-  xTaskCreate(watchTask, "Watch", 192, NULL, 3, NULL);
+  xTaskCreate(watchTask, "Watch", 192, NULL, 3, &h);
+  vTaskSetApplicationTaskTag(h, (TaskHookFunction_t)PIN_WATCH);
 }
 
-void loop() { }
+// loop() runs in the idle task: tag it on the first call, so that its
+// trace pin follows the scheduler from now on like those of the others
+void loop() {
+  static bool tagged = false;
+  if (!tagged) {
+    vTaskSetApplicationTaskTag(NULL, (TaskHookFunction_t)PIN_IDLE);
+    digitalWrite(PIN_IDLE, HIGH);   // already switched in: set by hand once
+    tagged = true;
+  }
+}
