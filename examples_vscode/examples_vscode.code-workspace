@@ -1,23 +1,70 @@
 {
   "folders": [
-    { "path": "ex01_tasks_priorities" },
-    { "path": "ex02_isr_semaphore" },
-    { "path": "ex03_queue" },
-    { "path": "ex04_runtime_stats" },
-    { "path": "ex07_time_slicer" },
-    { "path": "ex08_avr_isr_nesting" },
-    { "path": "ex09_rtos_isr_nesting" },
-    { "path": "ex10_counting_semaphore" },
-    { "path": "ex11_mutex" },
-    { "path": "ex12_mars_pathfinder" },
-    { "path": "ex13_queue_isr" },
-    { "path": "ex14_deadlock" }
+    {
+      "path": "ex01_tasks_priorities"
+    },
+    {
+      "path": "ex02_isr_semaphore"
+    },
+    {
+      "path": "ex03_queue"
+    },
+    {
+      "path": "ex04_runtime_stats"
+    },
+    {
+      "path": "ex07_time_slicer"
+    },
+    {
+      "path": "ex08_avr_isr_nesting"
+    },
+    {
+      "path": "ex09_rtos_isr_nesting"
+    },
+    {
+      "path": "ex10_counting_semaphore"
+    },
+    {
+      "path": "ex11_mutex"
+    },
+    {
+      "path": "ex12_mars_pathfinder"
+    },
+    {
+      "path": "ex13_queue_isr"
+    },
+    {
+      "path": "ex14_deadlock"
+    },
+    {
+      "path": "ex15_c_jitter"
+    },
+    {
+      "path": "ex16_py_jitter"
+    },
+    {
+      "path": "ex17_rust_jitter"
+    },
+    {
+      "path": "ex18_c_isr_shared"
+    },
+    {
+      "path": "ex19_py_irq"
+    },
+    {
+      "path": "ex20_rust_isr"
+    },
+    {
+      "path": "ex21_active_object"
+    }
   ],
   "extensions": {
     "recommendations": [
       "wokwi.wokwi-vscode",
       "platformio.platformio-ide",
-      "ms-vscode.cpptools"
+      "ms-vscode.cpptools",
+      "rust-lang.rust-analyzer",
+      "ms-python.python"
     ]
   }
 }

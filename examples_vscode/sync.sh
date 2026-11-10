@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-# Copy sketch.ino and diagram.json from ../examples/<ex>/ into the VS Code
-# copies here (<ex>/src/sketch.ino, <ex>/diagram.json).
+# Copy sketch.ino (or main.py) and diagram.json from ../examples/<ex>/ into
+# the VS Code copies here (<ex>/src/sketch.ino or <ex>/main.py, <ex>/diagram.json).
+# The Rust examples (folders with Cargo.toml) exist only here: they need a
+# local build and do not run on wokwi.com, so they have no master copy.
 #
 #   ./sync.sh          copy changed files
 #   ./sync.sh --check  only report differences, exit 1 if any
@@ -15,12 +17,14 @@ status=0
 for dst in "$here"/*/; do
   ex="$(basename "$dst")"
   [[ -f "$dst/wokwi.toml" ]] || continue
+  [[ -f "$dst/Cargo.toml" ]] && continue
   if [[ ! -d "$src_root/$ex" ]]; then
     echo "warning: $ex has no counterpart in examples/" >&2
     continue
   fi
-  for pair in "sketch.ino:src/sketch.ino" "diagram.json:diagram.json"; do
+  for pair in "sketch.ino:src/sketch.ino" "main.py:main.py" "diagram.json:diagram.json"; do
     from="$src_root/$ex/${pair%%:*}"
+    [[ -f "$from" ]] || continue
     to="$dst${pair#*:}"
     cmp -s "$from" "$to" && continue
     status=1

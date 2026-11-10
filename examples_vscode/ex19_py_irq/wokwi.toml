@@ -1,0 +1,12 @@
+# Wokwi for VS Code (MicroPython). Build first: Run Task "build main.uf2"
+# (python ../make_uf2.py: MicroPython + main.py in one file), then
+# F1 -> "Wokwi: Start Simulator". The output is MicroPython's REPL on USB,
+# in the Wokwi terminal. See ../README.md.
+[wokwi]
+version = 1
+firmware = 'build/main.uf2'
+elf = 'build/main.uf2'
+# Logic analyzer capture, written when the simulation stops
+vcdFile = 'wokwi.vcd'
+# mpremote can reach the REPL here: mpremote connect port:rfc2217://localhost:4000
+rfc2217ServerPort = 4000

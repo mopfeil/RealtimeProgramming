@@ -1,0 +1,309 @@
+\section{Programming Patterns for Realtime Systems}
+\label{sec:patterns}
+% long \texttt{} names: allow wider spaces instead of lines in the margin
+\scriptonly{\sloppy}
+
+% ---------------------------------------------------------------------------
+\subsection{Principles}
+\begin{frame}{What makes code realtime-capable?}
+  \begin{itemize}
+    \item \textbf{Bounded}: every loop, every wait, every queue has a known maximum. No recursion without a depth limit, no \texttt{portMAX\_DELAY} where an answer is required.
+    \item \textbf{Predictable}: the worst case is close to the average; no hidden work (allocation, GC, logging) in the time-critical path.
+    \item \textbf{Measurable}: trace pins, run-time statistics, overrun counters are part of the design (Chapters~\ref{sec:timing}, \ref{sec:runtimestats}).
+    \item \textbf{Fail-safe}: a missed deadline or an error is detected and leads to a defined state.
+  \end{itemize}
+  Rule sets that collect such patterns: MISRA C, \emph{The Power of Ten} (G.\ Holzmann, NASA/JPL), the Ravenscar profile (Ada), AUTOSAR C++14.
+\end{frame}
+
+\scriptonly{%
+The ten rules of Holzmann (2006) in short: simple control flow (no \texttt{goto}, no recursion); a fixed upper bound for every loop; no dynamic memory after initialisation; functions no longer than one page; at least two assertions per function; data in the smallest possible scope; check every return value and every parameter; restricted use of the preprocessor; at most one level of pointer dereferencing; compile with all warnings and use static analysers. Almost every rule makes the worst case analysable, by a tool or by a reviewer. The patterns of this chapter are the positive side: how to build a program that follows these rules and still does its job.
+}
+
+% ---------------------------------------------------------------------------
+\subsection{Memory and resources}
+\begin{frame}[fragile]{Pattern: allocate at initialisation}
+  \begin{itemize}
+    \item All tasks, queues, buffers, objects are created at start-up. After that, nothing is created or freed.
+    \item If memory runs out, it happens at start-up, on the bench, not after a week in the field.
+  \end{itemize}
+  \begin{columns}[T]
+    \begin{column}{0.5\textwidth}
+\begin{lstlisting}[numbers=none,basicstyle=\ttfamily\scriptsize]
+// FreeRTOS, static allocation
+static StackType_t stack[128];
+static StaticTask_t tcb;
+xTaskCreateStatic(fn, "T", 128,
+    NULL, 2, stack, &tcb);
+\end{lstlisting}
+    \end{column}
+    \begin{column}{0.48\textwidth}
+\begin{lstlisting}[style=rust,numbers=none,basicstyle=\ttfamily\scriptsize]
+// Rust: fixed capacity
+let mut log: heapless::Vec<i16, 64>
+    = heapless::Vec::new();
+if log.push(x).is_err() {
+    overflow += 1;   // full
+}
+\end{lstlisting}
+    \end{column}
+  \end{columns}
+  \begin{itemize}
+    \item \textbf{Memory pool}: if objects must come and go, a pool of $n$ blocks of \emph{equal} size: allocation and release in $O(1)$, no fragmentation. A counting semaphore (Chapter~\ref{sec:sync}) can guard it.
+    \item MicroPython: buffers and arrays at start-up, \texttt{array}/\texttt{bytearray}/\texttt{memoryview} in the loop (Chapter~\ref{sec:langexec}).
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Pattern: bounded waiting}
+  \begin{itemize}
+    \item Every blocking call gets a timeout derived from the timing requirements, and the timeout is handled: retry, degrade, report.
+    \item Every polling loop gets a maximum number of iterations.
+    \item Timeouts turn a hidden error (a task that hangs forever) into a detected one.
+  \end{itemize}
+  \begin{center}\small
+  \begin{tabular}{@{}ll@{}}
+    \toprule
+    instead of & use \\
+    \midrule
+    \texttt{xQueueReceive(q, \&v, portMAX\_DELAY)} & timeout = period of the producer + margin \\
+    \texttt{while (!(UART->SR \& TXE)) \{\}} & \texttt{for (n = 0; n < MAX \&\& !(\ldots); n++)} \\
+    lock A, then lock B & fixed lock order, or timeout with back-off (Chapter~\ref{sec:sync}) \\
+    \bottomrule
+  \end{tabular}
+  \end{center}
+\end{frame}
+
+% ---------------------------------------------------------------------------
+\subsection{Time}
+\begin{frame}[fragile]{Pattern: periodic task with overrun detection}
+\begin{lstlisting}[basicstyle=\ttfamily\scriptsize]
+void controlTask(void *pv) {
+  TickType_t last = xTaskGetTickCount();
+  for (;;) {
+    vTaskDelayUntil(&last, PERIOD);    // last += PERIOD
+    if (xTaskGetTickCount() != last) { // woke up late: deadline missed
+      overruns++;
+      last = xTaskGetTickCount();      // re-synchronise, do not catch up
+    }
+    readInputs();                      // input at a fixed point in time
+    compute();
+    writeOutputs();
+  }
+}
+\end{lstlisting}
+  \begin{itemize}
+    \item Absolute timing: no drift (Chapter~\ref{sec:langexec}, ex15--17).
+    \item Compare the wake-up time with the planned one to detect a late period (FreeRTOS $\ge$ 10.4: \texttt{xTaskDelayUntil()} returns \texttt{pdFALSE}). Decide explicitly: catch up, or skip.
+    \item Read inputs and write outputs at the same point in every period: the jitter of \texttt{compute()} does not reach the plant.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Time-triggered vs.\ event-triggered}
+  \begin{columns}[T]
+    \begin{column}{0.5\textwidth}
+      \textbf{Time-triggered}
+      \begin{itemize}\small
+        \item Everything happens at fixed times: cyclic executive, time slicer (Chapter~\ref{sec:timeslicer}), periodic tasks.
+        \item Inputs are polled.
+        \item Load is constant and known: easy to analyse and to test.
+        \item Reaction time up to one period; CPU is used even without events.
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.5\textwidth}
+      \textbf{Event-triggered}
+      \begin{itemize}\small
+        \item Interrupts and messages start the work.
+        \item Fast reaction, idle CPU when nothing happens.
+        \item Load depends on the environment: a burst of events can overload the system $\rightarrow$ limit the event rate (minimum inter-arrival time, debouncing, queue length).
+      \end{itemize}
+    \end{column}
+  \end{columns}
+  \medskip
+  In practice: a time-triggered core (control loops) plus a few event-triggered paths with bounded rate (emergency stop, communication).
+\end{frame}
+
+% ---------------------------------------------------------------------------
+\subsection{Communication}
+\begin{frame}{Pattern: deferred interrupt processing}
+  \begin{itemize}
+    \item ISR (\emph{top half}): acknowledge the hardware, take a time stamp, copy the data, signal. A few microseconds.
+    \item Task (\emph{bottom half}): the actual work, scheduled by priority, may block and use the RTOS.
+    \item Signal: semaphore, task notification (ex02, ex10), queue (ex13), lock-free ring buffer (ex21).
+    \item MicroPython: hard IRQ $+$ \texttt{micropython.schedule()}; Rust/RTIC: hardware task spawns a software task; Linux: threaded IRQ.
+  \end{itemize}
+  \begin{alertblock}{The ISR budget}
+    Every microsecond in an ISR is added to the latency of every lower-priority interrupt and to the response time of every task.
+  \end{alertblock}
+\end{frame}
+
+\begin{frame}[fragile]{Pattern: lock-free single-producer/single-consumer ring buffer}
+  \begin{columns}[T]
+    \begin{column}{0.56\textwidth}
+\begin{lstlisting}[numbers=none,basicstyle=\ttfamily\scriptsize]
+Event ring[N];           // N = power of 2
+volatile uint8_t head, tail;
+
+bool push(Event e) {     // producer only
+  uint8_t h = head;
+  if ((uint8_t)(h - tail) == N)
+    return false;        // full
+  ring[h % N] = e;       // 1. data
+  head = h + 1;          // 2. publish
+  return true;
+}
+bool pop(Event &e) {     // consumer only
+  uint8_t t = tail;
+  if (t == head) return false;
+  e = ring[t % N];       // 1. data
+  tail = t + 1;          // 2. free slot
+  return true;
+}
+\end{lstlisting}
+    \end{column}
+    \begin{column}{0.42\textwidth}
+      \small
+      \begin{itemize}
+        \item Only the producer writes \texttt{head}, only the consumer writes \texttt{tail}: no lock, the ISR never waits.
+        \item Conditions: exactly one producer and one consumer; index reads/writes are atomic (one byte/word); data is written \emph{before} the index.
+        \item On multicore or with reordering compilers: memory barriers (C11 \texttt{atomic\_store\_explicit(..., memory\_order\_release)}, Rust \texttt{Ordering::Release}/\texttt{Acquire}).
+        \item Rust: \texttt{heapless::spsc::Queue}; FreeRTOS: stream/message buffers.
+      \end{itemize}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{Pattern: double buffering}
+  \begin{itemize}
+    \item Two buffers: the producer (ISR, DMA) fills one while the consumer processes the other; at the end they swap (\emph{ping-pong}).
+    \item The swap is a single pointer or index assignment: the only critical section, a few instructions.
+    \item Condition: processing one buffer takes less time than filling the other one. Otherwise: more buffers (a ring of buffers) or drop and count.
+    \item Typical uses: ADC samples via DMA, display frame buffers, audio, a consistent snapshot of many values (the producer never writes into the buffer that is being read: no torn reads, cf.\ ex18--20).
+  \end{itemize}
+\end{frame}
+
+% ---------------------------------------------------------------------------
+\subsection{Structure}
+\begin{frame}{Pattern: active object (event-driven state machine)}
+  \begin{columns}[T]
+    \begin{column}{0.5\textwidth}
+      \small
+      \begin{itemize}
+        \item One task owns its data and its state; others talk to it only by \emph{events} in its queue: no shared data, no mutex.
+        \item Loop: wait for an event or the next timeout $\rightarrow$ dispatch $\rightarrow$ back to waiting.
+        \item \textbf{Run to completion}: the handler of an event never blocks. Waiting is a state with a timeout, not a \texttt{delay()}.
+        \item Response time to any event $\le$ longest handler $+$ preemption by higher priorities.
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.48\textwidth}
+      \begin{center}
+      \begin{tikzpicture}[font=\scriptsize, >=Stealth, node distance=0.9cm and 1.0cm,
+                          st/.style={draw, rounded corners, minimum width=1.6cm, minimum height=0.55cm}]
+        \node[st] (g) {CAR\_GREEN};
+        \node[st, below=of g] (y) {CAR\_YELLOW};
+        \node[st, below=of y] (w) {PED\_WALK};
+        \node[st, right=1.1cm of y, fill=red!15] (e) {EMERGENCY};
+        \draw[->] (g) -- node[left] {walk} (y);
+        \draw[->] (y) -- node[left] {timeout 1\,s} (w);
+        \draw[->] (w.west) -- ++(-0.4,0) |- node[pos=0.25,left] {4\,s} (g.west);
+        \draw[->] (g.east) -| node[pos=0.3,above] {emergency} (e.north);
+        \draw[->] (e.south) |- node[pos=0.7,below] {3\,s} (w.east);
+      \end{tikzpicture}
+      \end{center}
+      \scriptsize Emergency from every state; after 3\,s back to CAR\_GREEN (simplified in the diagram).
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}[fragile]{Wokwi example 21: active object vs.\ blocking sequence}
+  \begin{columns}[T]
+    \begin{column}{0.5\textwidth}
+      \small
+      \begin{itemize}
+        \item Pedestrian crossing on the Uno with FreeRTOS. Button ``walk'' (pin~2), button ``emergency'' (pin~3): all red at once.
+        \item ISRs: debounce, time stamp, push into the lock-free ring, notify the controller.
+        \item DIP~1 OFF: active object. ON: sequential code with \texttt{vTaskDelay()} between the light phases.
+      \end{itemize}
+      Logic analyzer: D0 = controller task, D1 = emergency button, D2 = car red.
+    \end{column}
+    \begin{column}{0.48\textwidth}
+      \scriptsize
+\begin{verbatim}
+AO      : walk request -> yellow
+AO      : EMERGENCY, all red after 0 ms
+AO      : cars green
+
+blocking: walk request -> yellow
+blocking: cars green
+blocking: EMERGENCY, all red
+          after 3354 ms
+\end{verbatim}
+      \small
+      Emergency pressed 1.5\,s after ``walk''. The blocking version sees it only after the whole sequence.
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\scriptonly{%
+\wokwiexample{ex21_active_object}{Active object with a lock-free ring buffer}{lst:ex21}
+
+In the active-object variant the controller task waits in \texttt{ulTaskNotifyTake()} with a timeout that ends at the next deadline of the current state. An event or the timeout wakes it; \texttt{dispatch()} handles each event in a few microseconds and returns. Because the ISR notifies the controller directly and the controller has a higher priority than the interrupted idle task, the emergency is handled before the ISR has returned to the idle task: the measured response is below one millisecond (``0 ms''). The blocking variant contains the same states, but as a sequence of statements: while it is in \texttt{vTaskDelay()}, the emergency event waits in the ring buffer. Nothing is lost, but the reaction comes 3.4\,s late. In a real system such a delay would be found only when somebody presses the emergency button at the wrong moment.
+
+The ring buffer has one producer, although there are two ISRs: on the AVR an ISR runs with interrupts disabled, so the two ISRs cannot interrupt each other and act as one producer. On a processor with nested interrupts (Cortex-M with different priorities) the two ISRs would need either two ring buffers or a short critical section in \texttt{push()}.
+}
+
+\begin{frame}{Pattern: supervision and safe state}
+  \begin{itemize}
+    \item \textbf{Watchdog}: a hardware timer resets the CPU unless it is fed regularly. Feed it only when \emph{all} essential tasks have reported progress (a flag per task, checked by one supervisor task), not from a timer ISR.
+    \item \textbf{Deadline monitoring}: each periodic task checks its own overrun (wake-up time vs.\ planned time), a supervisor checks the run-time statistics (Chapter~\ref{sec:runtimestats}) and the stack high-water marks.
+    \item \textbf{Safe state}: a defined state that the system can always reach (outputs off, motor braked, valve closed). Errors, panics, failed assertions and watchdog resets lead there.
+    \item \textbf{Graceful degradation}: on overload, drop the least important work first (logging, display), keep the control loop.
+  \end{itemize}
+\end{frame}
+
+% ---------------------------------------------------------------------------
+\subsection{Anti-patterns}
+\begin{frame}{Anti-patterns}
+  \begin{center}\footnotesize
+  \begin{tabular}{@{}p{0.38\textwidth}p{0.54\textwidth}@{}}
+    \toprule
+    anti-pattern & consequence $\rightarrow$ pattern \\
+    \midrule
+    \texttt{delay()} inside a state machine & no reaction during the delay (ex21) $\rightarrow$ states with timeouts \\
+    work, then \texttt{delay(T)} & drift (ex15--17) $\rightarrow$ absolute timing \\
+    \texttt{malloc}/objects in the loop & varying time, fragmentation, GC pauses (ex15--17) $\rightarrow$ allocate at init \\
+    \texttt{printf}/logging in an ISR or a control loop & milliseconds of hidden blocking $\rightarrow$ log into a ring buffer, print from a low-priority task \\
+    long critical section & latency for everybody (ex18--20) $\rightarrow$ copy inside, process outside \\
+    \texttt{portMAX\_DELAY} everywhere & hangs are invisible $\rightarrow$ bounded waiting \\
+    flag polling in a busy loop & wastes CPU, latency = loop time $\rightarrow$ block on a semaphore/notification \\
+    sharing a resource with a binary semaphore & unbounded priority inversion (ex12) $\rightarrow$ mutex with priority inheritance \\
+    \bottomrule
+  \end{tabular}
+  \end{center}
+\end{frame}
+
+\begin{frame}{The patterns in C, MicroPython and Rust}
+  \begin{center}\footnotesize
+  \begin{tabular}{@{}p{0.22\textwidth}p{0.22\textwidth}p{0.22\textwidth}p{0.24\textwidth}@{}}
+    \toprule
+    pattern & C / FreeRTOS & MicroPython & Rust \\
+    \midrule
+    allocate at init & \texttt{xTaskCreateStatic}, static arrays & \texttt{array}, \texttt{bytearray} at start-up & \texttt{static}, \texttt{heapless}, \texttt{StaticCell} \\
+    absolute timing & \texttt{vTaskDelayUntil} & \texttt{ticks\_add}/\texttt{ticks\_diff} & Embassy \texttt{Ticker}, RTIC monotonic \\
+    deferred ISR work & notification, queue & hard IRQ $+$ \texttt{schedule()} & RTIC software task, Embassy \texttt{Signal} \\
+    SPSC ring & hand-written, stream buffer & preallocated \texttt{array} $+$ indices & \texttt{heapless::spsc} \\
+    active object & task $+$ queue & \texttt{asyncio} task $+$ queue & Embassy task $+$ \texttt{Channel} \\
+    shared data & critical section, mutex & \texttt{disable\_irq()} & \texttt{Mutex<RefCell>}, atomics, RTIC resources \\
+    \bottomrule
+  \end{tabular}
+  \end{center}
+\end{frame}
+
+\scriptonly{%
+Exercises:
+\begin{enumerate}
+  \item Extend the active object of ex21 by a \emph{minimum green time}: a walk request during the first 5\,s of CAR\_GREEN is stored and served when the 5\,s are over. Which new state or variable do you need? Does the controller ever block?
+  \item Press ``walk'' ten times quickly in ex21. How many events reach the ring buffer, how many are dropped, and why does the controller ignore most of them?
+  \item Add a supervisor task with the lowest priority that toggles an LED only if the controller has handled an event or a timeout during the last 5\,s. Which situations does it detect, which not?
+\end{enumerate}
+}
+
+\scriptonly{\fussy}

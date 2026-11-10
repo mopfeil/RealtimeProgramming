@@ -1,0 +1,11 @@
+{
+  // Rust example: needs rustup target add thumbv6m-none-eabi (once).
+  // After the build: F1 -> "Wokwi: Start Simulator".
+  "version": "2.0.0",
+  "tasks": [
+    { "label": "cargo build --release", "type": "shell", "command": "cargo build --release",
+      "group": { "kind": "build", "isDefault": true }, "problemMatcher": ["$rustc"] },
+    { "label": "cargo build --example race (rejected on purpose)", "type": "shell",
+      "command": "cargo build --release --example race", "problemMatcher": ["$rustc"] }
+  ]
+}

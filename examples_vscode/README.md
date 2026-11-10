@@ -1,7 +1,8 @@
 # Wokwi examples for VS Code
 
-Copies of the Wokwi examples in `../examples/` (`ex01`–`ex04`, `ex07`–`ex14`) that run in the
-**Wokwi for VS Code** extension instead of the browser simulator on wokwi.com.
+Copies of the Wokwi examples in `../examples/` (`ex01`–`ex04`, `ex07`–`ex16`, `ex18`, `ex19`, `ex21`) that run in the
+**Wokwi for VS Code** extension instead of the browser simulator on wokwi.com, plus the Rust examples
+`ex17` and `ex20`, which exist only here (see [C, MicroPython and Rust on the Pico](#c-micropython-and-rust-on-the-pico-ex15ex20)).
 
 The difference to the browser: Wokwi for VS Code does **not compile** anything.
 You build the firmware locally with PlatformIO, and Wokwi simulates the resulting `.hex`/`.elf` file.
@@ -14,7 +15,8 @@ diagram.json + wokwi.toml ──(Wokwi: Start Simulator)┘──▶ simulation,
 
 ## Folder layout
 
-Each example folder is a self-contained PlatformIO project:
+Each example folder is a self-contained PlatformIO project (the MicroPython and Rust examples `ex16`, `ex17`,
+`ex19`, `ex20` differ, see [below](#c-micropython-and-rust-on-the-pico-ex15ex20)):
 
 | File | Purpose |
 |------|---------|
@@ -32,7 +34,7 @@ Libraries replace `libraries.txt`:
 - `ex08_avr_isr_nesting` needs no library.
 
 > The sketches and diagrams are duplicates; `../examples/` is the master copy (the LaTeX script includes the files from there).
-> After changing an example there, run `./sync.sh` to copy `sketch.ino` and `diagram.json` here.
+> After changing an example there, run `./sync.sh` to copy `sketch.ino` (or `main.py`) and `diagram.json` here.
 > `./sync.sh --check` only lists differences (exit code 1 if any).
 
 ## One-time setup
@@ -267,6 +269,54 @@ What to look for:
 - `ex13`: with switch 1 the filter task needs 30 ms per 20 ms sample; switch it off again to see how many samples were lost.
   Exercise: set `LOG_BAUD` to 4800, the log task becomes too slow on average and the queues overflow.
 
+## C, MicroPython and Rust on the Pico (ex15–ex20)
+
+Examples for chapters 8 and 9 (realtime behaviour of C, Python and Rust). They run on the
+**Raspberry Pi Pico** (RP2040), because only this board runs all three languages in Wokwi.
+Each experiment exists three times, with the same job, pins, DIP switches and output format:
+
+| Experiment | C (PlatformIO) | MicroPython | Rust (cargo) |
+|------------|----------------|-------------|--------------|
+| periodic job: speed, heap, GC, relative vs. absolute timing | `ex15_c_jitter` | `ex16_py_jitter` | `ex17_rust_jitter` |
+| interrupt and shared data: torn reads, critical sections, latency | `ex18_c_isr_shared` | `ex19_py_irq` | `ex20_rust_isr` |
+
+### Build
+
+- **C** (`ex15`, `ex18`): PlatformIO as for the other examples. `platformio.ini` uses the community platform
+  `https://github.com/maxgerhardt/platform-raspberrypi.git` with the arduino-pico core (the official
+  `raspberrypi` platform does not have it); the first build downloads it (a few minutes).
+  Firmware: `.pio/build/pico/firmware.uf2`. Output on `Serial1` (GP0/GP1) → Wokwi serial monitor.
+- **MicroPython** (`ex16`, `ex19`): Wokwi for VS Code cannot copy `main.py` onto the simulated Pico.
+  `../make_uf2.py` builds one file `build/main.uf2` from the MicroPython 1.29 firmware (downloaded once into
+  `.micropython/`) and a LittleFS file system that contains `main.py`. Once: Run Task **set up ../.venv (once)**
+  (installs `littlefs-python` and `mpremote` from `requirements.txt`). Then Run Task
+  **build main.uf2** (or `python ../make_uf2.py` in the example folder) after every change of `main.py`.
+  Output: the MicroPython REPL on USB, shown in the Wokwi terminal. The REPL is also reachable on
+  port 4000: `mpremote connect port:rfc2217://localhost:4000` (e.g. to `run` a changed `main.py` without rebuilding).
+- **Rust** (`ex17`, `ex20`): once `rustup target add thumbv6m-none-eabi`, then `cargo build --release`
+  (default build task). Firmware: `target/thumbv6m-none-eabi/release/<name>` (ELF, `debug = false` keeps it small).
+  `cargo build --release --example race` in `ex20` is **rejected on purpose** (E0277: a `RefCell` shared with an ISR).
+  The Rust examples have no copy in `../examples/` and are not touched by `sync.sh`.
+
+### What to look for
+
+| Folder | DIP switches | Serial output | Logic analyzer |
+|--------|--------------|---------------|----------------|
+| `ex15`–`ex17` | 1: log record on the heap, 2: relative timing, 3: `gc.collect()` in the slack (Python only) | per 500 periods: period min/avg/max, job min/max, overruns | D0 = GP2 job, D1 = GP3 heap operation / GC |
+| `ex18`–`ex20` | 1: protect the copy (interrupts off), 2: short critical section; Python: 3 soft IRQ, 4 handler allocates | per second: interrupts, copies, torn copies, latency min/max | D0 = GP5 PWM (interrupt source, wired to GP6), D1 = GP3 ISR, D2 = GP2 main copies |
+
+Measured in Wokwi (simulated time): job time C 13–16 µs, Rust 6–7 µs, MicroPython 338–373 µs;
+MicroPython with allocation: GC pause of about 6 ms every 2 s. Interrupt latency C 2 µs, Rust 1 µs,
+MicroPython 18–25 µs (hard IRQ); a long critical section raises it to 89/80/161 µs.
+
+## Realtime patterns (ex21)
+
+`ex21_active_object` (Uno, FreeRTOS, chapter 10): pedestrian crossing. Buttons *walk* (pin 2) and
+*emergency* (pin 3) → ISR → lock-free ring buffer → controller task. DIP switch 1 OFF: active object
+(event-driven state machine, emergency handled at once). ON: blocking sequence with `vTaskDelay()`
+(emergency handled up to 5 s late). LEDs: car red/yellow/green = pins 5/6/7, walk = pin 8.
+Logic analyzer: D0 = controller task, D1 = emergency button, D2 = car red.
+
 ## Command line (without VS Code)
 
 ```
@@ -289,3 +339,5 @@ wokwi-cli --timeout 5000 .  # simulate 5 s (needs WOKWI_CLI_TOKEN from https://w
 | `F5` fails: `avr-gdb` not found | Install `avr-gdb` or set the full path in `miDebuggerPath` |
 | `F5` fails: *Failed to find thread 1 for break event* | `avr-gdb` too old (Arduino IDE / PlatformIO): use a current one, see [Prerequisites](#prerequisites) |
 | No breakpoint is hit (ex08/ex09) | DIP switch 1 is OFF (short work): nothing goes wrong. Switch it ON |
+| MicroPython example shows only the REPL banner, no output | `build/main.uf2` not built or old: Run Task **build main.uf2** |
+| `cargo build`: *can't find crate for `core`* | `rustup target add thumbv6m-none-eabi` |

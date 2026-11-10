@@ -44,6 +44,9 @@ def source_files():
              os.path.abspath(__file__)] + chapter_files()
     files += sorted(glob.glob(os.path.join(ROOT, "examples", "*", "*.ino")))
     files += sorted(glob.glob(os.path.join(ROOT, "examples", "*", "*.asm")))
+    files += sorted(glob.glob(os.path.join(ROOT, "examples", "*", "*.py")))
+    files += sorted(glob.glob(os.path.join(ROOT, "examples_vscode", "*", "src", "*.rs")))
+    files += sorted(glob.glob(os.path.join(ROOT, "examples_vscode", "*", "examples", "*.rs")))
     return files
 
 
@@ -74,6 +77,10 @@ def to_text(tex, labels):
                  lambda m: f"[Listing: {m.group(2)}, examples/{m.group(1)}/sketch.ino]", tex)
     tex = re.sub(r"\\edsimexample\{([^}]*)\}\{([^}]*)\}\{([^}]*)\}\{[^}]*\}",
                  lambda m: f"[Listing: {m.group(3)}, examples/{m.group(1)}/{m.group(2)}.asm]", tex)
+    tex = re.sub(r"\\pyexample\{([^}]*)\}\{([^}]*)\}\{[^}]*\}",
+                 lambda m: f"[Listing: {m.group(2)}, examples/{m.group(1)}/main.py]", tex)
+    tex = re.sub(r"\\rustexample\{([^}]*)\}\{([^}]*)\}\{([^}]*)\}\{[^}]*\}",
+                 lambda m: f"[Listing: {m.group(3)}, examples_vscode/{m.group(1)}/{m.group(2)}]", tex)
     tex = re.sub(r"\\lstinputlisting(\[[^\]]*\])?\{([^}]*)\}", r"[Listing: \2]", tex)
     # pylatexenc drops \texttt and \url together with their argument
     tex = re.sub(r"\\(texttt|url)\{((?:[^{}]|\{[^{}]*\})*)\}", r"\2", tex)

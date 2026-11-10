@@ -1,0 +1,262 @@
+\section{C, Python and Rust (2): Interrupts and Shared Data}
+\label{sec:langconc}
+% long \texttt{} names: allow wider spaces instead of lines in the margin
+\scriptonly{\sloppy}
+
+% ---------------------------------------------------------------------------
+\subsection{Interrupt handlers in three languages}
+\begin{frame}[fragile]{An interrupt handler in C, MicroPython and Rust}
+  \begin{columns}[T]
+    \begin{column}{0.33\textwidth}
+      \scriptsize\textbf{C}
+\begin{lstlisting}[numbers=none]
+volatile uint32_t n;
+void onEdge() {
+  n++;
+}
+attachInterrupt(
+  digitalPinToInterrupt(6),
+  onEdge, RISING);
+\end{lstlisting}
+    \end{column}
+    \begin{column}{0.30\textwidth}
+      \scriptsize\textbf{MicroPython}
+\begin{lstlisting}[style=python,numbers=none]
+n = array("I", [0])
+def on_edge(pin):
+    n[0] += 1
+Pin(6).irq(on_edge,
+    Pin.IRQ_RISING,
+    hard=True)
+\end{lstlisting}
+    \end{column}
+    \begin{column}{0.35\textwidth}
+      \scriptsize\textbf{Rust}
+\begin{lstlisting}[style=rust,numbers=none]
+static N: Mutex<Cell<u32>> =
+    Mutex::new(Cell::new(0));
+#[interrupt]
+fn IO_IRQ_BANK0() {
+  critical_section::with(|cs| {
+    let n = N.borrow(cs);
+    n.set(n.get() + 1); });
+}
+\end{lstlisting}
+    \end{column}
+  \end{columns}
+  \begin{itemize}
+    \item C: everything is allowed; \texttt{volatile} tells the compiler that the variable changes outside of the normal program flow. Whether the access is safe is the programmer's problem.
+    \item MicroPython: the handler is Python code, called by the C interrupt handler of the VM. Restrictions depend on \texttt{hard}.
+    \item Rust: a \texttt{static} shared with an ISR must be \texttt{Sync}; plain variables are rejected by the compiler.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{MicroPython: hard and soft interrupts}
+  \begin{columns}[T]
+    \begin{column}{0.5\textwidth}
+      \textbf{Hard IRQ} (\texttt{hard=True})
+      \begin{itemize}\small
+        \item The handler runs inside the interrupt.
+        \item Lower latency (ex19: 18--25\,$\mu$s).
+        \item The heap is locked: no allocation, no float, no string, no big int, no \texttt{print()} with formatting $\rightarrow$ \texttt{MemoryError}, the handler is switched off.
+        \item \texttt{micropython.alloc\_emergency\_exception\_buf(n)} so that the traceback can be printed.
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.5\textwidth}
+      \textbf{Soft IRQ} (\texttt{hard=False}, default for pins)
+      \begin{itemize}\small
+        \item The interrupt only enters the handler into a queue; the VM calls it between two bytecodes of the main program (like \texttt{micropython.schedule()}).
+        \item No restrictions: the handler may allocate.
+        \item Latency = time to the next bytecode boundary (ex19: 27--56\,$\mu$s), long while the main program is inside a C function or the GC runs.
+      \end{itemize}
+    \end{column}
+  \end{columns}
+  \medskip
+  Pattern: a hard handler that only copies data into a preallocated buffer and calls \texttt{micropython.schedule()} for the rest (\emph{deferred interrupt processing}, Chapter~\ref{sec:sync}).
+\end{frame}
+
+% ---------------------------------------------------------------------------
+\subsection{Shared data}
+\begin{frame}{Wokwi examples 18--20: interrupt and shared data}
+  \begin{columns}[T]
+    \begin{column}{0.56\textwidth}
+      \small
+      \begin{itemize}
+        \item PWM (GP5) at 1\,kHz, wired back to GP6: an interrupt every 1000\,$\mu$s.
+        \item The PWM counter runs at 1\,MHz from the edge: the ISR reads its \emph{own latency}.
+        \item ISR: writes a sample of 8 words, all = sequence number.
+        \item Main: copies the sample and processes each word (10\,$\mu$s). Words differ $\Rightarrow$ \emph{torn}.
+        \item DIP~1: protect the copy (interrupts off). DIP~2: short critical section (copy only, process outside).
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.42\textwidth}
+      \begin{center}
+      \begin{tikzpicture}[font=\scriptsize, >=Stealth, scale=0.85]
+        \draw[thick] (0,0) -- (0.3,0) -- (0.3,0.4) -- (1.0,0.4) -- (1.0,0) -- (1.7,0) -- (1.7,0.4) -- (2.4,0.4) -- (2.4,0) -- (3.1,0);
+        \node[left] at (0,0.2) {GP5};
+        \draw[thick] (0,-0.8) -- (0.35,-0.8) -- (0.35,-0.5) -- (0.5,-0.5) -- (0.5,-0.8) -- (1.75,-0.8) -- (1.75,-0.5) -- (1.9,-0.5) -- (1.9,-0.8) -- (3.1,-0.8);
+        \node[left] at (0,-0.65) {ISR};
+        \draw[thick] (0,-1.6) -- (0.1,-1.6) -- (0.1,-1.3) -- (1.2,-1.3) -- (1.2,-1.6) -- (1.3,-1.6) -- (1.3,-1.3) -- (2.9,-1.3) -- (2.9,-1.6) -- (3.1,-1.6);
+        \node[left] at (0,-1.45) {main};
+        \draw[<->] (0.3,0.6) -- node[above] {latency} (0.35,0.6);
+        \draw[red, dashed] (0.35,0.5) -- (0.35,-1.7);
+        \node[red] at (0.6,-1.95) {torn copy};
+      \end{tikzpicture}
+      \end{center}
+      \scriptsize
+      ex18 \texttt{examples/ex18\_c\_isr\_shared}\\
+      ex19 \texttt{examples/ex19\_py\_irq}\\
+      ex20 \texttt{examples\_vscode/ex20\_rust\_isr}\\[0.5ex]
+      Logic analyzer: D0 = GP5, D1 = ISR, D2 = main copies.
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{Results: torn copies and latency}
+  \begin{center}\small
+  \begin{tabular}{@{}lrrrrrr@{}}
+    \toprule
+    & \multicolumn{2}{c}{C (ex18)} & \multicolumn{2}{c}{MicroPython (ex19)} & \multicolumn{2}{c}{Rust (ex20)} \\
+    per second & torn & latency & torn & latency & torn & latency \\
+    \midrule
+    unprotected & 950 & 2 / 2 & 997 & 18 / 25 & 1000 & 1 / 1 \\
+    long critical section & 0 & 2 / \textbf{89} & 0 & 18 / \textbf{161} & 0 & 1 / \textbf{80} \\
+    short critical section & 0 & 2 / 2 & 0 & 18 / 40 & 0 & 1 / 1 \\
+    \bottomrule
+  \end{tabular}
+  \end{center}
+  latency min/max in $\mu$s, 1000 interrupts per second
+  \begin{itemize}
+    \item Unprotected: almost every interrupt tears a copy, in every language.
+    \item Disabling interrupts fixes the data, but adds the length of the critical section to the latency of \emph{every} interrupt.
+    \item Copy inside, process outside: correct data \emph{and} low latency.
+  \end{itemize}
+\end{frame}
+
+\scriptonly{%
+The latency is the time from the edge to the first instruction of the handler that reads the PWM counter. In C (2\,$\mu$s) it includes the dispatcher of \texttt{attachInterrupt()} in the arduino-pico core, which looks up the handler for the pin; Rust (1\,$\mu$s) enters the ISR directly from the vector table. MicroPython needs 18\,$\mu$s: the C interrupt handler of the VM calls the Python function, which runs a few bytecodes before it reaches \texttt{mem32[CTR]}.
+
+With the long critical section, the worst case is the length of the copy loop: 8 words $\times$ 10\,$\mu$s of processing in C and Rust, and about 160\,$\mu$s for the interpreted word-by-word copy in MicroPython. In MicroPython the short critical section is a slice assignment, \texttt{snap[:] = shared}: one call of a C function, which copies the 32 bytes without allocating. The remaining 40\,$\mu$s are mostly the calls of \texttt{disable\_irq()} and \texttt{enable\_irq()} themselves.
+
+On a single core, disabling interrupts is enough to protect data that is shared with an ISR. On a multicore chip (RP2040 with both cores in use) the other core can still access the data: a spinlock is needed in addition (pico-sdk \texttt{spin\_lock\_blocking()}; Rust \texttt{critical-section} implementation of \texttt{rp2040-hal}, which uses a hardware spinlock).
+}
+
+\begin{frame}[fragile]{MicroPython: latency under the garbage collector}
+  \footnotesize
+\begin{verbatim}
+protect=1 short=1 soft=0 alloc=0 irqs 1000 copies 4197 torn 0 latency min/max 18/40 us
+protect=1 short=1 soft=0 alloc=0 irqs  996 copies 4173 torn 0 latency min/max 18/689 us
+protect=0 short=0 soft=1 alloc=0 irqs 1000 copies 2998 torn 997 latency min/max 27/56 us
+protect=0 short=0 soft=1 alloc=1 irqs 1000 copies 2853 torn 616 latency min/max 26/909 us
+protect=0 short=0 soft=0 alloc=1 irqs 0 ...
+MemoryError: memory allocation failed, heap is locked
+\end{verbatim}
+  \small
+  \begin{itemize}
+    \item Line 2: the main loop allocates a little (the report line once per second). Every few seconds the GC runs: a \emph{hard} IRQ waits up to 689\,$\mu$s, 4 edges are lost. With \texttt{gc.disable()} the spike disappears (and the heap fills up).
+    \item Lines 3--4: soft IRQ: 27--56\,$\mu$s. If the handler allocates, the GC runs more often: up to 909\,$\mu$s. The soft handler still tears the copy: it runs between two bytecodes of the copy loop.
+    \item Lines 5--6: a hard handler that allocates is stopped at the first interrupt.
+  \end{itemize}
+\end{frame}
+
+% ---------------------------------------------------------------------------
+\subsection{What the compiler checks}
+\begin{frame}[fragile]{Rust: data races are compile errors}
+\begin{lstlisting}[style=rust,numbers=none]
+static SHARED: RefCell<Sample> = RefCell::new(Sample { w: [0; 8] });
+\end{lstlisting}
+\begin{lstlisting}[language={},numbers=none,basicstyle=\ttfamily\scriptsize]
+error[E0277]: `RefCell<Sample>` cannot be shared between threads safely
+\end{lstlisting}
+  \begin{itemize}
+    \item \texttt{Sync}: a type that may be used from several threads (and ISRs) at the same time. \texttt{RefCell}, \texttt{Cell} are not; \texttt{Mutex<RefCell<T>>}, atomics are.
+    \item \texttt{critical\_section::Mutex}: access only with a token \texttt{cs}, which exists only inside \texttt{critical\_section::with(|cs| \ldots)} $\Rightarrow$ the protection cannot be forgotten.
+    \item \texttt{static mut} compiles only inside \texttt{unsafe}: the place to look for in a review. ex20 uses it on purpose for the torn variant.
+    \item Atomics: \texttt{AtomicU32}, \texttt{AtomicBool}. The Cortex-M0+ has no atomic read-modify-write: \texttt{fetch\_add} does not exist for \texttt{thumbv6m} (compile error, not a silent race).
+    \item What Rust does \emph{not} check: the \emph{length} of a critical section, deadlocks, priority inversion, timing.
+  \end{itemize}
+\end{frame}
+
+\scriptonly{%
+\texttt{cargo build --release --example race} in \texttt{examples\_vscode/ex20\_rust\_isr} compiles \texttt{examples/race.rs}: an ISR and the main program that share a \texttt{static RefCell}. The compiler rejects it with E0277. The equivalent C program (ex18, switch~1 OFF) compiles without a warning and tears 95\,\% of its copies. In C the same knowledge has to be applied by the programmer: every variable that an ISR writes needs \texttt{volatile} (otherwise the compiler may keep it in a register), and every access to more than one machine word needs a critical section. Tools such as static analysers (e.g.\ for MISRA C) and run-time sanitizers find some of these errors.
+
+The Rust ISR in Listing~\ref{lst:ex20} takes the critical section itself, although main cannot interrupt it: the token is required to touch a \texttt{Mutex}. On the Cortex-M this costs a few instructions (\texttt{cpsid i}/\texttt{cpsie i}); on the RP2040 the \texttt{critical-section} implementation of the HAL also takes a hardware spinlock, which makes it safe for the second core.
+}
+
+% ---------------------------------------------------------------------------
+\subsection{Concurrency models}
+\begin{frame}{Concurrency beyond interrupts}
+  \begin{center}\small
+  \begin{tabular}{@{}p{0.15\textwidth}p{0.25\textwidth}p{0.25\textwidth}p{0.25\textwidth}@{}}
+    \toprule
+    & C & MicroPython & Rust \\
+    \midrule
+    preemptive RTOS & FreeRTOS, Zephyr (Chapter~\ref{sec:tasks}) & -- & FreeRTOS bindings, RTIC \\
+    cooperative & superloop, time slicer (Chapter~\ref{sec:timeslicer}) & \texttt{asyncio} & Embassy (\texttt{async}/\texttt{await}) \\
+    threads & RTOS tasks & \texttt{\_thread} (second core) & RTOS tasks \\
+    \bottomrule
+  \end{tabular}
+  \end{center}
+  \begin{itemize}
+    \item \textbf{Cooperative} (\texttt{asyncio}, Embassy): a task gives up the CPU only at \texttt{await}. Latency $\le$ longest stretch without \texttt{await} of all tasks. No locks needed between tasks of one executor.
+    \item \textbf{RTIC} (Rust): tasks are interrupt handlers with priorities, resources are locked with the \emph{priority ceiling} (Stack Resource Policy): no deadlock, at most one blocking critical section, all checked at compile time.
+    \item \textbf{Embassy}: several executors at different interrupt priorities give preemption between groups of async tasks.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Python and Rust on Linux}
+  \begin{itemize}
+    \item \textbf{CPython}: reference counting plus a cyclic garbage collector (pauses), the global interpreter lock (GIL: one thread runs Python code at a time; optional free-threaded build since 3.13), dynamic memory everywhere.
+    \begin{itemize}
+      \item Suitable for supervision, configuration, visualisation, test automation of realtime systems, not for the loop itself.
+    \end{itemize}
+    \item \textbf{Linux} itself: with \texttt{PREEMPT\_RT} (mainline since 6.12) latencies of tens of microseconds, threads with \texttt{SCHED\_FIFO}, memory locked with \texttt{mlockall()}, no page faults in the loop.
+    \item \textbf{C and Rust on Linux}: the same rules as on the microcontroller apply: preallocate, no blocking system calls in the loop, absolute timing (\texttt{clock\_nanosleep(TIMER\_ABSTIME)}).
+  \end{itemize}
+\end{frame}
+
+\scriptonly{%
+The complete listings of the three versions:
+
+\wokwiexample{ex18_c_isr_shared}{Interrupt and shared data in C}{lst:ex18}
+
+\pyexample{ex19_py_irq}{Interrupt and shared data in MicroPython}{lst:ex19}
+
+\rustexample{ex20_rust_isr}{src/main.rs}{Interrupt and shared data in Rust}{lst:ex20}
+
+\rustexample{ex20_rust_isr}{examples/race.rs}{Rejected by the compiler: a RefCell shared with an ISR}{lst:ex20race}
+}
+
+% ---------------------------------------------------------------------------
+\subsection{Summary}
+\begin{frame}{Summary: which language for which part?}
+  \begin{center}\small
+  \begin{tabular}{@{}p{0.25\textwidth}p{0.21\textwidth}p{0.21\textwidth}p{0.21\textwidth}@{}}
+    \toprule
+    & C & MicroPython & Rust \\
+    \midrule
+    interrupt latency (ex18--20) & 2\,$\mu$s & 18\,$\mu$s, GC: 0.7\,ms & 1\,$\mu$s \\
+    shared data & programmer & programmer & compiler \\
+    hard realtime ($\mu$s) & yes & no & yes \\
+    soft realtime (ms) & yes & yes, without allocation & yes \\
+    ecosystem, certification & largest, MISRA, certified compilers & small & growing (Ferrocene) \\
+    \bottomrule
+  \end{tabular}
+  \end{center}
+  \begin{itemize}
+    \item The rules are the same in every language: bounded work in the ISR, short critical sections, no allocation in the loop, absolute timing.
+    \item The difference is \emph{who checks them}: nobody (C), the runtime at run time (MicroPython), the compiler (Rust, for data races and memory).
+  \end{itemize}
+\end{frame}
+
+\scriptonly{%
+Exercises:
+\begin{enumerate}
+  \item Run ex18 with switch~1 OFF and look at D1 and D2 in Surfer. Find a torn copy: where is the ISR pulse relative to the copy?
+  \item Remove \texttt{volatile} from \texttt{shared} in ex18 and build with \texttt{-O2}. Does the program still see new samples? Look at the assembly (\texttt{objdump -d}).
+  \item In ex19, move the allocation of the handler (switch~4) into a function that the hard handler passes to \texttt{micropython.schedule()}. What happens to latency and errors?
+  \item Replace \texttt{Mutex<RefCell<Sample>>} in ex20 by a \emph{sequence lock}: the ISR increments a counter before and after writing; main repeats the copy until both counters are equal and even. Which variant has the lower latency?
+\end{enumerate}
+}
+
+\scriptonly{\fussy}

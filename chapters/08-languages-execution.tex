@@ -1,0 +1,310 @@
+\section{C, Python and Rust (1): Execution, Memory and Timing}
+\label{sec:langexec}
+% long \texttt{} names: allow wider spaces instead of lines in the margin
+\scriptonly{\sloppy}
+
+% ---------------------------------------------------------------------------
+\subsection{Why the language matters}
+\begin{frame}{Why the language matters}
+  The schedulability tests of Chapter~\ref{sec:schedulability} need the worst-case execution time $C_i$ of every task. The language and its runtime decide
+  \begin{itemize}
+    \item how long a statement takes: machine code or interpreter,
+    \item what happens \emph{without being written}: memory allocation, garbage collection, bounds checks, exceptions, background work of the runtime,
+    \item whether $C_i$ can be \emph{bounded} at all: by analysis of the machine code (Chapter~\ref{sec:static}), or only by measurement,
+    \item which errors are found by the compiler, which at run time, and which never (undefined behaviour).
+  \end{itemize}
+  \begin{alertblock}{Realtime means predictable, not fast}
+    The \emph{maximum} counts, not the average. A language that is fast on average but stops for 6\,ms every two seconds misses deadlines.
+  \end{alertblock}
+\end{frame}
+
+\begin{frame}{Three execution models}
+  \begin{center}\small
+  \begin{tabular}{@{}p{0.17\textwidth}p{0.25\textwidth}p{0.25\textwidth}p{0.25\textwidth}@{}}
+    \toprule
+    & C & MicroPython & Rust \\
+    \midrule
+    translation & ahead of time to machine code & to bytecode (on the target or by \texttt{mpy-cross}), interpreted by a virtual machine & ahead of time to machine code (LLVM) \\
+    runtime & none (startup code, C library) & VM, object heap, garbage collector, scheduler for soft IRQs & none (\texttt{no\_std}: only \texttt{core}) \\
+    memory & static, stack, \texttt{malloc} & every object on the GC heap & static, stack; heap optional \\
+    errors & undefined behaviour & exceptions & compile errors; \texttt{panic} at run time \\
+    \bottomrule
+  \end{tabular}
+  \end{center}
+\end{frame}
+
+\scriptonly{%
+MicroPython is an implementation of Python~3 for microcontrollers (RP2040, ESP32, STM32). CPython on a PC behaves similarly, with a much larger runtime and an operating system underneath (Chapter~\ref{sec:langconc}).
+
+The examples of this and the next chapter run on the Raspberry Pi Pico (RP2040, Cortex-M0+, 125\,MHz) instead of the Arduino Uno, because only this board runs all three languages in Wokwi: C with the arduino-pico core, MicroPython~1.29 with the official firmware, and Rust with the \texttt{rp2040-hal}. Each experiment exists three times with the same job, the same pins, the same DIP switches and the same output format, so the numbers can be compared line by line. All numbers in this chapter were measured in the Wokwi simulator (simulated time); a real Pico gives similar, but not identical, values.
+
+The C and MicroPython examples also run on wokwi.com (new Pi Pico project, paste \texttt{sketch.ino} or \texttt{main.py} and \texttt{diagram.json}). The Rust examples need a local build and run in Wokwi for VS Code only (\texttt{examples\_vscode/}).
+}
+
+% ---------------------------------------------------------------------------
+\subsection{The same job in three languages}
+\begin{frame}[fragile]{Wokwi examples 15--17: a periodic job}
+  \begin{columns}[T]
+    \begin{column}{0.55\textwidth}
+      \small
+      Every 2000\,$\mu$s: take a sample, 16-tap FIR filter, build a log record. Every 500 periods: statistics.
+      \begin{itemize}
+        \item DIP~1: log record on the heap (\texttt{malloc}, \texttt{String}, Python objects) or in a fixed buffer.
+        \item DIP~2: relative (\emph{work, then wait 2000\,$\mu$s}) or absolute timing (\emph{wait until the next multiple}).
+        \item DIP~3 (Python only): \texttt{gc.collect()} in the slack.
+      \end{itemize}
+      Logic analyzer: D0 = GP2 (job), D1 = GP3 (heap operation or GC).
+    \end{column}
+    \begin{column}{0.43\textwidth}
+      \footnotesize
+\begin{lstlisting}[numbers=none]
+next = now() + PERIOD;
+for (;;) {
+  start = now();      // measure
+  job();
+  next += PERIOD;     // absolute
+  while (now() < next) {}
+}
+\end{lstlisting}
+      \scriptsize
+      ex15 \texttt{examples/ex15\_c\_jitter}\\
+      ex16 \texttt{examples/ex16\_py\_jitter}\\
+      ex17 \texttt{examples\_vscode/ex17\_rust\_jitter}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{Results: execution time of the job}
+  \begin{center}\small
+  \begin{tabular}{@{}lrrr@{}}
+    \toprule
+    job time [$\mu$s], min/max & C (ex15) & MicroPython (ex16) & Rust (ex17) \\
+    \midrule
+    fixed buffer, no heap & 13 / 16 & 338 / 373 & 6 / 7 \\
+    record on the heap & 19 / 28 & 591 / 625 & 16 / 19 \\
+    heap, incl.\ garbage collection & -- & 600 / \textbf{6121} & -- \\
+    \bottomrule
+  \end{tabular}
+  \end{center}
+  \begin{itemize}
+    \item The interpreter costs a factor of 25--50 for the same algorithm.
+    \item C vs.\ Rust: same compiler backend, the difference is the library: \texttt{snprintf} of newlib is slower than \texttt{core::fmt} of Rust.
+    \item The heap costs time in every language, and \emph{varying} time: $C_{\max} - C_{\min}$ grows.
+    \item Only MicroPython has a stop: the garbage collector, about 5.5\,ms every 2\,s.
+  \end{itemize}
+\end{frame}
+
+\scriptonly{%
+The first second of the C version shows a few periods between 1987 and 2013\,$\mu$s and a job time of 30\,$\mu$s, later the period is exact to the microsecond. The arduino-pico core runs background work (start-up of the USB stack, the timer interrupt of the core) that preempts the loop. Rust has no such background: its period is 2000\,$\mu$s from the first cycle on. In MicroPython the period varies by $\pm 23\,\mu$s even without allocation: the virtual machine checks between bytecodes for pending work (scheduled callbacks, USB), and the busy-wait loop itself consists of bytecodes that take several microseconds each, so the end of the wait is only known with this resolution.
+}
+
+% ---------------------------------------------------------------------------
+\subsection{Execution time and analysability}
+\begin{frame}{Execution time: compiled vs.\ interpreted}
+  \begin{itemize}
+    \item \textbf{C, Rust}: one statement $\rightarrow$ a few machine instructions. Static WCET analysis of the machine code is possible (tools such as aiT, Chapter~\ref{sec:static}); Rust and C use the same backend (LLVM, GCC) and the same analysers.
+    \item \textbf{MicroPython}: one statement $\rightarrow$ several bytecodes $\rightarrow$ the VM dispatches each one, looks up names, checks types, creates objects.
+    \begin{itemize}
+      \item The execution time depends on the \emph{values}: an int above $2^{30}$ becomes a big integer \emph{on the heap}; a float is always a heap object.
+      \item In practice $C_i$ can only be measured, with a large safety margin.
+    \end{itemize}
+    \item Speed-ups in MicroPython: \texttt{@micropython.native} (machine code, same semantics), \texttt{@micropython.viper} (machine code, typed integers, no heap), modules in C.
+    \item Hidden costs also exist in compiled languages: library functions (\texttt{printf}), bounds checks in Rust (usually optimised away), the optimisation level (\texttt{-O0} vs.\ \texttt{-O2} changes $C_i$ by a factor of 2--5).
+  \end{itemize}
+\end{frame}
+
+\scriptonly{%
+The random number generator of examples 15--17 is a small linear congruential generator, $x_{n+1} = (75 x_n + 74) \bmod 65537$, instead of the common $1103515245 x_n + 12345$. The reason is MicroPython: the product of the larger constants does not fit into a \emph{small int} (31 bits on a 32-bit port), MicroPython silently switches to a big integer, and every sample would allocate memory on the heap, even in the variant ``without heap''. Such costs are invisible in the source code; \texttt{micropython.mem\_info()} and \texttt{gc.mem\_free()} before and after a function show whether it allocates.
+}
+
+% ---------------------------------------------------------------------------
+\subsection{Memory}
+\begin{frame}{Memory: static, stack, heap}
+  \begin{center}\small
+  \begin{tabular}{@{}p{0.14\textwidth}p{0.25\textwidth}p{0.25\textwidth}p{0.25\textwidth}@{}}
+    \toprule
+    & static & stack & heap \\
+    \midrule
+    lifetime & whole program & function call & until \texttt{free}/drop/GC \\
+    size known & at link time & by analysis of the call tree & at run time \\
+    time & 0 & a few instructions & varying: search, split, merge \\
+    failure & linker error & stack overflow (Chapter~\ref{sec:avrnesting}) & out of memory, fragmentation \\
+    \bottomrule
+  \end{tabular}
+  \end{center}
+  \begin{itemize}
+    \item \textbf{Fragmentation}: enough free memory in total, but no free block large enough. Appears after hours or days, depends on the order of requests: practically impossible to test.
+    \item Rule in safety standards (MISRA C rule 21.3, JPL, DO-178C practice): \emph{no dynamic memory after initialisation}.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{The heap in C and Rust}
+  \begin{itemize}
+    \item \textbf{C}: \texttt{malloc}/\texttt{free} by the C library (newlib: lists of free blocks by size). The time depends on the state of these lists. Errors: forgetting \texttt{free} (leak), using a freed block (dangling pointer), freeing twice. None of them is detected.
+    \item \textbf{Rust}: the \emph{owner} of a value frees it when it goes out of scope (\texttt{drop}): deterministic, at a known point, no leak by forgetting, no dangling pointer (compile error).
+    \item \texttt{no\_std} has no heap at all. A heap is an explicit decision: a \texttt{\#[global\_allocator]} (e.g.\ \texttt{embedded-alloc}), then \texttt{Vec}, \texttt{String}, \texttt{Box} work.
+    \item The allocator of Rust has the same timing problems as \texttt{malloc} (ex17: 6\,$\mu$s $\rightarrow$ 16--19\,$\mu$s).
+    \item Without heap: arrays, fixed-capacity collections (crate \texttt{heapless}: \texttt{Vec<T, N>}, \texttt{String<N>}), \texttt{static} buffers. Errors appear as a return value (\texttt{push} returns \texttt{Err} when full), not as a crash.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}[fragile]{Garbage collection in MicroPython}
+  \begin{itemize}
+    \item Every object (list, string, float, big int, bound method, closure) lives on the GC heap.
+    \item \textbf{Mark and sweep, stop the world}: when an allocation finds no free block, the collector marks all reachable objects and sweeps the whole heap. The program stops meanwhile.
+    \item Duration $\sim$ size of the heap and number of live objects, \emph{not} the amount of garbage. ex16: a pause of 5.5--6\,ms; three periods of 2\,ms are missed.
+    \item When it happens depends on all allocations of the whole program: not predictable.
+  \end{itemize}
+  \begin{center}\footnotesize
+\begin{verbatim}
+heap=1 rel=0 gc=0 period min/avg/max 1984/2000/2015 us job min/max 591/625 us overruns 0
+heap=1 rel=0 gc=0 period min/avg/max  624/2000/6143 us job min/max 600/6121 us overruns 1
+heap=1 rel=0 gc=1 period min/avg/max 1996/2000/2004 us job min/max 608/653 us overruns 0
+\end{verbatim}
+  \end{center}
+\end{frame}
+
+\scriptonly{%
+The second line shows the collection: one job takes 6121\,$\mu$s instead of about 600, the period after it is only 624\,$\mu$s long, because the absolute timing catches up with the missed deadlines. ``overruns 1'' counts one long period; in fact three deadlines have passed. The heap of MicroPython~1.29 on the Pico is about 230\,KB (\texttt{gc.mem\_free()} + \texttt{gc.mem\_alloc()}). With the job allocating a list and two strings per period, it is full about every 2\,s.
+
+DIP switch~3 calls \texttt{gc.collect()} after every job. The collection then takes about 670\,$\mu$s (measured on D1 of the logic analyzer), always, because it sweeps the whole heap; but it happens at a known time, in the slack of the period, and the automatic collection never starts. The period stays at $2000 \pm 4\,\mu$s. The price is CPU time: 670\,$\mu$s of every 2000\,$\mu$s. This only works if job and collection together fit into one period.
+}
+
+\begin{frame}[fragile]{MicroPython: programming without allocation}
+  \begin{columns}[T]
+    \begin{column}{0.5\textwidth}
+      \small
+      \textbf{Allocates}
+\begin{lstlisting}[style=python,numbers=none]
+window = [x for x in buf]
+msg = f"y={acc:.1f}"
+mean = sum(window) / 16
+big = a * 1103515245
+buf = buf + [x]
+obj.method   # bound method
+\end{lstlisting}
+    \end{column}
+    \begin{column}{0.5\textwidth}
+      \small
+      \textbf{Does not allocate}
+\begin{lstlisting}[style=python,numbers=none]
+buf = array("h", [0] * 16)  # once
+buf[i] = x
+acc += c * x    # small ints
+snap[:] = shared  # slice copy
+mv = memoryview(buf)
+m = obj.method  # once, outside
+\end{lstlisting}
+    \end{column}
+  \end{columns}
+  \begin{itemize}
+    \item Allocate all buffers at start-up; use \texttt{array}, \texttt{bytearray}, \texttt{memoryview}; integer arithmetic; no strings in the loop.
+    \item \texttt{gc.collect()} at known times (idle time, after a burst); \texttt{gc.threshold(n)} collects earlier and shorter; \texttt{gc.disable()} for a critical phase.
+    \item \texttt{micropython.heap\_lock()} turns every allocation into a \texttt{MemoryError}: finds hidden allocations during testing.
+  \end{itemize}
+\end{frame}
+
+% ---------------------------------------------------------------------------
+\subsection{Errors at run time}
+\begin{frame}{What happens on an error?}
+  \begin{center}\footnotesize
+  \begin{tabular}{@{}p{0.2\textwidth}p{0.24\textwidth}p{0.24\textwidth}p{0.24\textwidth}@{}}
+    \toprule
+    & C & MicroPython & Rust \\
+    \midrule
+    index out of range & undefined behaviour: reads/writes a neighbour & \texttt{IndexError} & \texttt{panic} (or \texttt{get()} $\rightarrow$ \texttt{None}) \\
+    integer overflow & signed: undefined; unsigned: wraps & becomes a big int (heap!) & debug: \texttt{panic}; release: wraps; \texttt{checked\_add()} \\
+    null / dangling pointer & undefined behaviour & -- & compile error \\
+    out of memory & \texttt{malloc} returns \texttt{NULL} & \texttt{MemoryError} & \texttt{panic} (alloc error handler) \\
+    \bottomrule
+  \end{tabular}
+  \end{center}
+  \begin{itemize}
+    \item Undefined behaviour is the worst case for a realtime system: the program continues with wrong data, and the compiler may remove checks that ``cannot'' fail.
+    \item A \texttt{panic} or an exception is a \emph{detected} error. The system needs a reaction: a safe state (outputs off), a restart by the watchdog (Chapter~\ref{sec:patterns}).
+  \end{itemize}
+\end{frame}
+
+% ---------------------------------------------------------------------------
+\subsection{Relative and absolute timing}
+\begin{frame}[fragile]{Relative vs.\ absolute timing}
+  \begin{columns}[T]
+    \begin{column}{0.5\textwidth}
+      \small
+      \textbf{Relative}: \emph{work, then wait $T$}. Period $= T + C$: the error accumulates (drift), and it varies with $C$ (jitter).
+\begin{lstlisting}[numbers=none]
+job(); delay(T);
+\end{lstlisting}
+      \textbf{Absolute}: \emph{wait until $t_0 + nT$}. No drift; jitter only from interference.
+\begin{lstlisting}[numbers=none]
+next += T; wait_until(next);
+\end{lstlisting}
+    \end{column}
+    \begin{column}{0.48\textwidth}
+      \small
+      Average period with DIP~2 ON (relative):
+      \begin{center}
+      \begin{tabular}{@{}lrr@{}}
+        \toprule
+        & static & heap \\
+        \midrule
+        C & 2015 & 2022 \\
+        MicroPython & 2384 & -- \\
+        Rust & 2007 & 2017 \\
+        \bottomrule
+      \end{tabular}
+      \end{center}
+      Absolute timing: 2000\,$\mu$s in all cases.
+    \end{column}
+  \end{columns}
+  \medskip
+  \begin{itemize}
+    \item FreeRTOS: \texttt{vTaskDelayUntil()} (Chapter~\ref{sec:tasks}); MicroPython: \texttt{time.ticks\_add()}/\texttt{ticks\_diff()} (wrap-around safe); Rust: \texttt{Timer}, Embassy \texttt{Ticker}.
+  \end{itemize}
+\end{frame}
+
+\scriptonly{%
+With relative timing, the C version runs 0.75\,\% slow: after one hour, a clock based on it is 27\,s late. The MicroPython version runs 19\,\% slow. The relative error is not constant either: it changes with every change of the job, of the compiler, of the input data. Absolute timing has another advantage: a single late period (the garbage collection in ex16) is caught up, the average stays exact. If catching up is not wanted (e.g.\ a control loop that should skip missed samples), the program must detect the overrun and set \texttt{next} to the next future multiple of $T$.
+
+The complete listings of the three versions:
+
+\wokwiexample{ex15_c_jitter}{Periodic job in C (Pico, arduino-pico)}{lst:ex15}
+
+\pyexample{ex16_py_jitter}{Periodic job in MicroPython}{lst:ex16}
+
+\rustexample{ex17_rust_jitter}{src/main.rs}{Periodic job in Rust (rp2040-hal)}{lst:ex17}
+}
+
+% ---------------------------------------------------------------------------
+\subsection{Summary}
+\begin{frame}{Summary: execution and memory}
+  \begin{center}\footnotesize
+  \begin{tabular}{@{}p{0.22\textwidth}p{0.23\textwidth}p{0.23\textwidth}p{0.23\textwidth}@{}}
+    \toprule
+    & C & MicroPython & Rust \\
+    \midrule
+    speed (ex15--17) & 1 & $\approx$ 1/25 & $\approx$ 2 \\
+    WCET analysis & tools exist & measurement only & tools for the machine code \\
+    hidden work & library calls & allocation, GC, VM & allocation (if used), panics \\
+    memory safety & programmer & runtime checks & compiler \\
+    heap-free code & usual & possible, with discipline & usual (\texttt{no\_std}) \\
+    \bottomrule
+  \end{tabular}
+  \end{center}
+  \begin{itemize}
+    \item C and Rust are comparable in timing; Rust moves a class of errors from run time to compile time.
+    \item MicroPython is suitable for soft realtime with periods of milliseconds, if allocation and GC are controlled; hard realtime parts belong into C/Rust (modules, PIO, hardware).
+  \end{itemize}
+\end{frame}
+
+\scriptonly{%
+Exercises:
+\begin{enumerate}
+  \item Run ex16 with DIP switch~1 ON and look at D0 in Surfer. How often does the collection happen? Make the heap smaller with a large \texttt{bytearray} allocated at start-up and measure again: does the pause get shorter or more frequent?
+  \item Add \texttt{@micropython.viper} to \texttt{job\_static()} in ex16 (types: \texttt{ptr16} for the arrays). How much faster does it get?
+  \item In ex15, replace \texttt{snprintf} by a small hand-written integer-to-text function. Compare the job time with Rust.
+  \item Write a version of ex17 that uses \texttt{heapless::String<64>} instead of \texttt{FixedBuf}. Which error appears when the record is longer than 64 characters?
+\end{enumerate}
+}
+
+\scriptonly{\fussy}

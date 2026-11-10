@@ -1,0 +1,8 @@
+# Wokwi for VS Code. Build first (PlatformIO: Build, or "pio run"),
+# then F1 -> "Wokwi: Start Simulator". See ../README.md.
+[wokwi]
+version = 1
+firmware = '.pio/build/pico/firmware.uf2'
+elf = '.pio/build/pico/firmware.elf'
+# Logic analyzer capture, written when the simulation stops
+vcdFile = 'wokwi.vcd'

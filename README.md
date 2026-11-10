@@ -35,7 +35,7 @@ rebuilt deck is refused (`git commit --no-verify` skips the check once, e.g. for
 |------|---------|
 | `main.tex`, `preamble.tex` | Mode switch, common setup |
 | `chapters/` | Lecture content; `\scriptonly{}` / `\slidesonly{}` mark mode-specific text |
-| `examples/` | Wokwi projects (`sketch.ino`, `diagram.json`, `libraries.txt`), included in the text via `\wokwiexample`; `ex05_8051_*`, `ex06_8051_*`: EdSim51 assembler programs (`.asm`), included via `\edsimexample` |
+| `examples/` | Wokwi projects (`sketch.ino` or MicroPython `main.py`, `diagram.json`, `libraries.txt`), included in the text via `\wokwiexample` / `\pyexample`; `ex05_8051_*`, `ex06_8051_*`: EdSim51 assembler programs (`.asm`), included via `\edsimexample` |
 | `examples_vscode/` | Copies of the Wokwi examples as PlatformIO projects for the *Wokwi for VS Code* extension, with a tutorial in `examples_vscode/README.md` |
 | `lib/FreeRTOS/` | Patched Arduino FreeRTOS library used in the examples |
 | `pptx/`, `pdf/` | PowerPoint deck built from the slides (see above) |
@@ -58,6 +58,11 @@ Examples:
   - `ex12_mars_pathfinder`: the Mars Pathfinder priority inversion (bus, watchdog, comm and meteo task), binary semaphore vs. mutex with priority inheritance
   - `ex13_queue_isr`: timer ISR → queue → filter task → queue → log task; priorities, timeouts, lost samples
   - `ex14_deadlock`: two mutexes in opposite order, fixed lock order, timeout with back-off
+- `ex15`–`ex20`: realtime behaviour of C, MicroPython and Rust (chapters `08-languages-execution.tex`, `09-languages-concurrency.tex`) on the Raspberry Pi Pico; each experiment in all three languages with the same pins, DIP switches and output:
+  - `ex15_c_jitter`, `ex16_py_jitter`, `ex17_rust_jitter`: periodic job every 2 ms; execution time, heap vs. fixed buffers, MicroPython garbage collection, relative vs. absolute timing
+  - `ex18_c_isr_shared`, `ex19_py_irq`, `ex20_rust_isr`: PWM edge → interrupt → 8-word sample shared with the main loop; torn copies, long vs. short critical section, interrupt latency (read from the PWM counter); MicroPython hard/soft IRQ and allocation in the handler; Rust `Mutex<RefCell<_>>` vs. `static mut`, and `examples/race.rs`, which the compiler rejects
+  - C and MicroPython (`sketch.ino`/`main.py`) also run on wokwi.com (Pi Pico project). The Rust examples need a local build and exist only in `examples_vscode/`.
+- `ex21_active_object`: realtime patterns (chapter `10-rt-patterns.tex`): ISR → lock-free ring buffer → active object (event-driven state machine) vs. a blocking sequence with `vTaskDelay()`; emergency stop response 0 ms vs. several seconds
 - `ex07_time_slicer`: binary time slicer without RTOS (TimerOne library), chapter `03-time-slicer.tex`. D0–D2 = pins 13/12/11 (slot jobs), D3 = pin 10 (ISR active); DIP switch 1 makes slot 2 longer than a time slice. Based on <https://wokwi.com/projects/414976138190111745>.
 
 ## EdSim51 examples (8051 assembler)
@@ -73,4 +78,6 @@ That CPU has no timer, interrupts or input pins, so the subroutine `tick` emulat
 Paste the file into the editor, edit `NWORK` (4 = short work, 25 = long work), press *Assemble* and *Run* (speed 256 Hz or more).
 The console shows a tick timeline (example 5) or SETPOINT plus a nesting-depth bar (example 6).
 
+> Status of `ex15`–`ex21` (2026-11-10): built with PlatformIO / cargo / `make_uf2.py` and run with wokwi-cli (Wokwi simulation API) in the switch settings described in the chapters; the numbers in the chapters come from these runs. Not yet run inside the VS Code extension or on wokwi.com.
+>
 > Status: the Wokwi examples have not yet been run in the Wokwi simulator. The `examples_vscode/` copies compile with PlatformIO (`pio run`, atmelavr), but have not yet been run in Wokwi for VS Code. The EdSim51 examples were checked with a cycle-accurate model of the used instructions, not yet in EdSim51 itself. The `*_sim8.asm` versions were run with the simulator's original assembler and CPU code (`asm.js`, `cpu.js`) under Node.js, not yet in the browser UI.

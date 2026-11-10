@@ -1,0 +1,198 @@
+{
+  "version": 1,
+  "author": "Realtime Programming",
+  "editor": "wokwi",
+  "parts": [
+    {
+      "type": "wokwi-arduino-uno",
+      "id": "uno",
+      "top": 0,
+      "left": 0,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-logic-analyzer",
+      "id": "logic1",
+      "top": 260,
+      "left": 40,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "btn1",
+      "top": -150,
+      "left": 20,
+      "attrs": {
+        "color": "blue",
+        "label": "walk",
+        "bounce": "0"
+      }
+    },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "btn2",
+      "top": -150,
+      "left": 110,
+      "attrs": {
+        "color": "red",
+        "label": "emergency",
+        "bounce": "0"
+      }
+    },
+    {
+      "type": "wokwi-dip-switch-8",
+      "id": "sw1",
+      "top": -90,
+      "left": 200,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-led",
+      "id": "ledR",
+      "top": -170,
+      "left": 300,
+      "attrs": {
+        "color": "red"
+      }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "ledY",
+      "top": -170,
+      "left": 330,
+      "attrs": {
+        "color": "yellow"
+      }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "ledG",
+      "top": -170,
+      "left": 360,
+      "attrs": {
+        "color": "green"
+      }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "ledW",
+      "top": -170,
+      "left": 400,
+      "attrs": {
+        "color": "limegreen",
+        "label": "walk"
+      }
+    }
+  ],
+  "connections": [
+    [
+      "uno:10",
+      "logic1:D0",
+      "green",
+      []
+    ],
+    [
+      "uno:3",
+      "logic1:D1",
+      "red",
+      []
+    ],
+    [
+      "uno:5",
+      "logic1:D2",
+      "orange",
+      []
+    ],
+    [
+      "uno:GND.1",
+      "logic1:GND",
+      "black",
+      []
+    ],
+    [
+      "btn1:1.l",
+      "uno:2",
+      "blue",
+      []
+    ],
+    [
+      "btn1:2.l",
+      "uno:GND.1",
+      "black",
+      []
+    ],
+    [
+      "btn2:1.l",
+      "uno:3",
+      "red",
+      []
+    ],
+    [
+      "btn2:2.l",
+      "uno:GND.1",
+      "black",
+      []
+    ],
+    [
+      "sw1:1a",
+      "uno:4",
+      "gray",
+      []
+    ],
+    [
+      "sw1:1b",
+      "uno:GND.1",
+      "black",
+      []
+    ],
+    [
+      "ledR:A",
+      "uno:5",
+      "green",
+      []
+    ],
+    [
+      "ledR:C",
+      "uno:GND.1",
+      "black",
+      []
+    ],
+    [
+      "ledY:A",
+      "uno:6",
+      "green",
+      []
+    ],
+    [
+      "ledY:C",
+      "uno:GND.1",
+      "black",
+      []
+    ],
+    [
+      "ledG:A",
+      "uno:7",
+      "green",
+      []
+    ],
+    [
+      "ledG:C",
+      "uno:GND.1",
+      "black",
+      []
+    ],
+    [
+      "ledW:A",
+      "uno:8",
+      "green",
+      []
+    ],
+    [
+      "ledW:C",
+      "uno:GND.1",
+      "black",
+      []
+    ]
+  ],
+  "dependencies": {}
+}

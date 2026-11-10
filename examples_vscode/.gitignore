@@ -1,2 +1,6 @@
 .pio/
 wokwi.vcd
+.venv/
+.micropython/
+build/
+target/

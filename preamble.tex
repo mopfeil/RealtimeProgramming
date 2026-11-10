@@ -45,3 +45,25 @@
 \newcommand{\edsimexample}[4]{% dir, file, caption, label
   \lstinputlisting[style=asm51,caption={#3},label={#4}]{examples/#1/#2.asm}%
 }
+
+% MicroPython examples: examples/<dir>/main.py
+\lstdefinestyle{python}{style=arduino, language=Python, morekeywords={async,await,nonlocal}}
+\newcommand{\pyexample}[3]{% dir, caption, label
+  \lstinputlisting[style=python,caption={#2},label={#3}]{examples/#1/main.py}%
+}
+
+% Rust
+\lstdefinelanguage{Rust}{
+  sensitive=true,
+  morekeywords={as,break,const,continue,crate,else,enum,extern,false,fn,for,if,impl,in,
+    let,loop,match,mod,move,mut,pub,ref,return,self,Self,static,struct,super,trait,true,
+    type,unsafe,use,where,while,dyn,async,await},
+  morecomment=[l]{//},
+  morecomment=[s]{/*}{*/},
+  morestring=[b]",
+}
+\lstdefinestyle{rust}{style=arduino, language=Rust}
+% Rust examples exist only as Wokwi for VS Code projects: examples_vscode/<dir>/<file>
+\newcommand{\rustexample}[4]{% dir, file, caption, label
+  \lstinputlisting[style=rust,caption={#3},label={#4}]{examples_vscode/#1/#2}%
+}

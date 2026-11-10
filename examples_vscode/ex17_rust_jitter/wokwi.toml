@@ -1,0 +1,8 @@
+# Wokwi for VS Code. Build first (cargo build --release, or the build task),
+# then F1 -> "Wokwi: Start Simulator". See ../README.md.
+[wokwi]
+version = 1
+firmware = 'target/thumbv6m-none-eabi/release/ex17-rust-jitter'
+elf = 'target/thumbv6m-none-eabi/release/ex17-rust-jitter'
+# Logic analyzer capture, written when the simulation stops
+vcdFile = 'wokwi.vcd'

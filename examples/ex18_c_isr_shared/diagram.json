@@ -1,0 +1,109 @@
+{
+  "version": 1,
+  "author": "Realtime Programming",
+  "editor": "wokwi",
+  "parts": [
+    {
+      "type": "wokwi-pi-pico",
+      "id": "pico",
+      "top": 0,
+      "left": 0,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-logic-analyzer",
+      "id": "logic1",
+      "top": 230,
+      "left": 150,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-dip-switch-8",
+      "id": "sw1",
+      "top": -80,
+      "left": 150,
+      "attrs": {}
+    }
+  ],
+  "connections": [
+    [
+      "pico:GP0",
+      "$serialMonitor:RX",
+      "",
+      []
+    ],
+    [
+      "pico:GP1",
+      "$serialMonitor:TX",
+      "",
+      []
+    ],
+    [
+      "pico:GP5",
+      "logic1:D0",
+      "orange",
+      []
+    ],
+    [
+      "pico:GP3",
+      "logic1:D1",
+      "blue",
+      []
+    ],
+    [
+      "pico:GP2",
+      "logic1:D2",
+      "green",
+      []
+    ],
+    [
+      "pico:GND.8",
+      "logic1:GND",
+      "black",
+      []
+    ],
+    [
+      "sw1:1a",
+      "pico:GP10",
+      "gray",
+      []
+    ],
+    [
+      "sw1:1b",
+      "pico:GND.4",
+      "black",
+      []
+    ],
+    [
+      "sw1:2a",
+      "pico:GP11",
+      "gray",
+      []
+    ],
+    [
+      "sw1:2b",
+      "pico:GND.4",
+      "black",
+      []
+    ],
+    [
+      "sw1:3a",
+      "pico:GP12",
+      "gray",
+      []
+    ],
+    [
+      "sw1:3b",
+      "pico:GND.4",
+      "black",
+      []
+    ],
+    [
+      "pico:GP5",
+      "pico:GP6",
+      "orange",
+      []
+    ]
+  ],
+  "dependencies": {}
+}
