@@ -91,6 +91,7 @@ void controlTask(void *pv) {
 }
 \end{lstlisting}
   \begin{itemize}
+    \small
     \item Absolute timing: no drift (Chapter~\ref{sec:langexec}, ex15--17).
     \item Compare the wake-up time with the planned one to detect a late period (FreeRTOS $\ge$ 10.4: \texttt{xTaskDelayUntil()} returns \texttt{pdFALSE}). Decide explicitly: catch up, or skip.
     \item Read inputs and write outputs at the same point in every period: the jitter of \texttt{compute()} does not reach the plant.

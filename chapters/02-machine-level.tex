@@ -556,10 +556,10 @@ In the browser versions the first symptom is always visible long before the visi
 \begin{frame}[fragile]{Example 8: example 6 in Arduino C}
   \begin{columns}[T]
     \begin{column}{0.60\textwidth}
-\lstinputlisting[basicstyle=\ttfamily\fontsize{6}{7}\selectfont,linerange={82-104},numbers=none]{examples/ex08_avr_isr_nesting/sketch.ino}
+\lstinputlisting[basicstyle=\ttfamily\fontsize{5.8}{6.8}\selectfont,linerange={82-104},numbers=none,aboveskip=0pt,belowskip=0pt]{examples/ex08_avr_isr_nesting/sketch.ino}
     \end{column}
     \begin{column}{0.38\textwidth}
-      \small
+      \footnotesize
       \begin{itemize}
         \item Timer~1 every $T = 1$\,ms, work 0.3\,ms or 2.5\,ms (DIP switch~1).
         \item The AVR clears I on ISR entry; \texttt{sei()} sets it again: the \texttt{allowNesting} of example~6.
@@ -603,6 +603,7 @@ The empty functions \texttt{dbgNested}, \texttt{dbgSetpointCorrupted} and \textt
 \end{frame}
 
 \begin{frame}[fragile]{Example 8 in the debugger: one frame per tick}
+\small
 \begin{verbatim}
 Breakpoint 3, dbgSetpointCorrupted (level=79, value=78 'N')
 0x8ff  RAMEND, the stack starts here and grows down
@@ -617,7 +618,6 @@ level   SP    bytes  interrupted code (return address on the stack)
    79  0x235   22   work(unsigned char) + 10 in section .text
 \end{verbatim}
   \begin{itemize}
-    \small
     \item Every level from 2 on has interrupted \texttt{work()} of the level before: none of them will ever resume.
     \item Level 79 has pushed its own registers over \texttt{app.setpoint}; the same ISR outputs the wrong value.
     \item $\text{stack}(t) = 22\,d(t)$ bytes: the formula of example~6 with 22 instead of 7.

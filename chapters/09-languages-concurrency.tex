@@ -45,6 +45,7 @@ fn IO_IRQ_BANK0() {
     \end{column}
   \end{columns}
   \begin{itemize}
+    \small
     \item C: everything is allowed; \texttt{volatile} tells the compiler that the variable changes outside of the normal program flow. Whether the access is safe is the programmer's problem.
     \item MicroPython: the handler is Python code, called by the C interrupt handler of the VM. Restrictions depend on \texttt{hard}.
     \item Rust: a \texttt{static} shared with an ISR must be \texttt{Sync}; plain variables are rejected by the compiler.

@@ -343,7 +343,7 @@ The Pathfinder story became widely known through a talk summary by Mike Jones (`
 
 \begin{frame}{Priority inheritance bounds the inversion}
   \begin{center}
-  \begin{tikzpicture}[x=0.9cm,y=0.5cm,font=\scriptsize]
+  \begin{tikzpicture}[x=0.9cm,y=0.44cm,font=\scriptsize]
     \foreach \y/\n in {3/H,1.5/M,0/L} \node[left] at (0,\y+0.3) {$\n$};
     \draw[->] (0,-0.3) -- (11,-0.3) node[right]{$t$};
     \draw[fill=blue!20] (0,0) rectangle (1,0.6);
@@ -361,6 +361,7 @@ The Pathfinder story became widely known through a talk summary by Mike Jones (`
   \end{tikzpicture}
   \end{center}
   \begin{itemize}
+    \small
     \item Priority inheritance (FreeRTOS mutex): $L$ inherits $H$'s priority while $H$ waits; $M$ cannot preempt. $H$ waits at most for the rest of $L$'s critical section (per mutex and lower task).
     \item Priority ceiling protocol: every mutex has a ceiling = highest priority of all its users; the holder runs at the ceiling from the moment it takes the mutex. Prevents chains and deadlocks, but FreeRTOS has no built-in support (emulate: \texttt{vTaskPrioritySet()}, or a critical section for very short accesses).
     \item Avoid sharing: a \emph{gatekeeper task} owns the resource, the others send requests through a queue (Chapter~\ref{sec:queues}).
