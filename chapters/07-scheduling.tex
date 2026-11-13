@@ -32,6 +32,62 @@
   \end{itemize}
 \end{frame}
 
+\subsection{Policies compared}
+\begin{frame}{Scheduling policies}
+  Which ready task gets the processor?
+  \begin{center}\small
+  \begin{tabular}{@{}lll@{}}
+    \toprule
+    Policy & Runs & Aims at \\
+    \midrule
+    Time slicing (round robin) & each ready task in turn, one tick & fairness \\
+    Shortest remaining time first & job with the least work left & short average response \\
+    Rate monotonic & task with the shortest period & deadlines, fixed priorities \\
+    Earliest deadline first & job with the nearest deadline & deadlines, dynamic priorities \\
+    \bottomrule
+  \end{tabular}
+  \end{center}
+  \begin{itemize}
+    \item FreeRTOS: fixed priorities; time slicing only among tasks of \emph{equal} priority.
+    \item Time slicing and SRTF do not know deadlines.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Example: one task set, four policies}
+  \begin{center}\small
+  \begin{tabular}{@{}lrrr@{}}
+    \toprule
+    Task & $T_i$ & $C_i$ & $U_i$ \\
+    \midrule
+    A & 64\,ms & 36\,ms & 56\,\% \\
+    B & 128\,ms & 20\,ms & 16\,\% \\
+    C & 256\,ms & 24\,ms & 9\,\% \\
+    \bottomrule
+  \end{tabular}
+  \end{center}
+  $U = 81\,\% > 3\,(2^{1/3}-1) = 78\,\%$: the sufficient test fails, the exact test gives $R_C = 116\,\text{ms} \le 256\,\text{ms}$.
+  \begin{center}\small
+  \begin{tabular}{@{}lrr@{}}
+    \toprule
+    Policy (\texttt{ex22}, measured) & Missed deadlines of A & Average response \\
+    \midrule
+    Time slicing, 16\,ms & 4 of 16 & 56\,ms \\
+    SRTF & 4 of 16 & 35\,ms \\
+    RM & 0 & 54\,ms \\
+    EDF & 0 & 54\,ms \\
+    \bottomrule
+  \end{tabular}
+  \end{center}
+\end{frame}
+
+\scriptonly{%
+\wokwiexample{ex22_scheduling_policies}{The same task set under time slicing, RM, SRTF and EDF}{lst:ex22}
+
+FreeRTOS has no SRTF or EDF scheduler. Listing~\ref{lst:ex22} emulates the policies on top of the fixed priorities: the task Sched has the highest priority and runs at every tick and whenever a job has finished. It releases the jobs, checks the deadlines and gives the task of the chosen job priority~2; all other workers have priority~1 and cannot run as long as the chosen one is ready. For time slicing Sched chooses nothing: the three workers share priority~1, and FreeRTOS switches to the next one at every tick (\texttt{configUSE\_TIME\_SLICING}). A job that is not finished at its deadline is counted and dropped. The DIP switches select the policy while the simulation runs.
+
+At the ticks $16k$ all three jobs are released together (the critical instant). With time slicing A, B and C take turns of 16\,ms; after 64\,ms A has had only 32 of its 36\,ms and misses its deadline. With SRTF the short jobs B (20\,ms) and C (24\,ms) run first, A starts after 44\,ms and misses its deadline as well, although the average response time is the best of all policies (35\,ms): SRTF is a good policy for throughput, not for deadlines. With RM A runs at the start of each of its periods, B finishes after 57\,ms and C, preempted once by A, after 119\,ms (calculated: 36, 56 and 116\,ms; the difference is the overhead of the tick interrupt and of Sched). EDF produces the same schedule here, because with these periods the nearest deadline always belongs to the task with the shortest period.
+}
+
 \scriptonly{%
 Exercise: implement the two-task example above on the Arduino, assign priorities according to RM, and verify the response times with the logic analyzer.
 }

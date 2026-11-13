@@ -56,6 +56,9 @@
     },
     {
       "path": "ex21_active_object"
+    },
+    {
+      "path": "ex22_scheduling_policies"
     }
   ],
   "extensions": {

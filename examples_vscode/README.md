@@ -1,6 +1,6 @@
 # Wokwi examples for VS Code
 
-Copies of the Wokwi examples in `../examples/` (`ex01`–`ex04`, `ex07`–`ex16`, `ex18`, `ex19`, `ex21`) that run in the
+Copies of the Wokwi examples in `../examples/` (`ex01`–`ex04`, `ex07`–`ex16`, `ex18`, `ex19`, `ex21`, `ex22`) that run in the
 **Wokwi for VS Code** extension instead of the browser simulator on wokwi.com, plus the Rust examples
 `ex17` and `ex20`, which exist only here (see [C, MicroPython and Rust on the Pico](#c-micropython-and-rust-on-the-pico-ex15ex20)).
 
@@ -27,7 +27,7 @@ Each example folder is a self-contained PlatformIO project (the MicroPython and 
 
 Libraries replace `libraries.txt`:
 
-- FreeRTOS examples (`ex01`–`ex04`, `ex09`–`ex14`) link the patched library directly from `../lib/FreeRTOS`
+- FreeRTOS examples (`ex01`–`ex04`, `ex09`–`ex14`, `ex21`, `ex22`) link the patched library directly from `../lib/FreeRTOS`
   (`lib_deps = symlink://../../lib/FreeRTOS`). Changes to the library take effect on the next build;
   no upload to wokwi.com and no library id are needed.
 - `ex07_time_slicer` gets `TimerOne` from the PlatformIO registry.
@@ -75,8 +75,8 @@ patched FreeRTOS library and is harmless.
 
 `F1` → **Wokwi: Start Simulator**. A tab with the circuit opens and the simulation starts.
 
-- Click parts to interact: push button in `ex02`, DIP switches in `ex07` and `ex09`–`ex14`, potentiometer in `ex13`.
-- Serial output (`ex04`, `ex07`, `ex10`–`ex14`) appears in the VS Code terminal panel; you can also type input there.
+- Click parts to interact: push button in `ex02`, DIP switches in `ex07`, `ex09`–`ex14` and `ex22`, potentiometer in `ex13`.
+- Serial output (`ex04`, `ex07`, `ex10`–`ex14`, `ex22`) appears in the VS Code terminal panel; you can also type input there.
 - The simulation runs only while the simulator tab is visible. Keep it open, e.g. in a split editor next to the code.
 - Pause/resume with the button in the simulator tab.
 
@@ -316,6 +316,40 @@ MicroPython 18–25 µs (hard IRQ); a long critical section raises it to 89/80/1
 (event-driven state machine, emergency handled at once). ON: blocking sequence with `vTaskDelay()`
 (emergency handled up to 5 s late). LEDs: car red/yellow/green = pins 5/6/7, walk = pin 8.
 Logic analyzer: D0 = controller task, D1 = emergency button, D2 = car red.
+
+## Scheduling policies (ex22)
+
+`ex22_scheduling_policies` (Uno, FreeRTOS, chapter 7): three periodic tasks, deadline = end of the period
+(1 tick = 16 ms):
+
+| Task | Period | CPU time per job |
+|------|--------|------------------|
+| A | 4 ticks (64 ms) | 36 ms |
+| B | 8 ticks (128 ms) | 20 ms |
+| C | 16 ticks (256 ms) | 24 ms |
+
+FreeRTOS only offers fixed priorities and time slicing. The task `Sched` (priority 3) emulates the other
+policies: at every tick and whenever a job finishes it gives the task of the chosen job priority 2 and all
+others priority 1. It also releases the jobs and checks the deadlines (a late job is counted and dropped).
+DIP switches 1 and 2 select the policy; a change takes effect at the next tick 16k, when all periods start together.
+
+| Switch 1 | Switch 2 | Policy | Result per 64 ticks (measured in Wokwi) |
+|----------|----------|--------|------------------------------------------|
+| OFF | OFF | FreeRTOS time slicing: all three tasks priority 1, round robin with one tick per slice | A misses 4 of 16 deadlines, average response 56 ms |
+| ON | OFF | rate monotonic: shortest period first | no miss; response A 37, B 57, C 119 ms, average 54 ms |
+| OFF | ON | shortest remaining time first | A misses 4 of 16 deadlines; B 20 ms, C 45 ms, average 35 ms |
+| ON | ON | earliest deadline first | no miss, same schedule as RM for this task set |
+
+Serial output every 64 ticks (about 1 s): jobs done and missed, average and longest response time per task.
+Logic analyzer: D0–D2 = A, B, C (pins 10–12), D3 = Sched (pin 9), D4 = Idle (pin 8),
+D5 = deadline missed (pin 13, HIGH for one tick, also the LED).
+
+What to look for in the waveform, starting at a tick 16k (all three jobs released):
+
+- Time slicing: A, B, C take turns, 16 ms each. After 64 ms A has had only 32 of its 36 ms: miss.
+- RM: A runs its 36 ms at the start of each of its periods, B and C fill the gaps. C is preempted by A and finishes after 119 ms.
+- SRTF: B (20 ms) and C (24 ms) run first, A starts after 44 ms and is not finished at 64 ms: miss.
+  Short jobs get the best response times, but the policy does not know deadlines.
 
 ## Command line (without VS Code)
 
