@@ -24,6 +24,7 @@ Each example folder is a self-contained PlatformIO project (the MicroPython and 
 | `diagram.json` | Copy of `../examples/<ex>/diagram.json` (circuit: Uno, logic analyzer, button, …) |
 | `platformio.ini` | Build settings: board `uno`, Arduino framework, libraries |
 | `wokwi.toml` | Tells Wokwi where the firmware is and where to write the logic analyzer capture |
+| `<ex>.code-workspace` | VS Code workspace with just this example (open this one) |
 
 Libraries replace `libraries.txt`:
 
@@ -52,16 +53,13 @@ Libraries replace `libraries.txt`:
 
 ### 1. Open an example
 
-Either open one example folder directly (*File → Open Folder… → `ex01_tasks_priorities`*),
-or open all of them at once with *File → Open Workspace from File… → `examples_vscode.code-workspace`*.
-
-Wokwi and PlatformIO both look for their config files (`wokwi.toml`, `platformio.ini`) in the root of a workspace folder.
-In the multi-folder workspace:
-
-- PlatformIO: choose the project in the status bar (folder icon, *Switch PlatformIO Project Environment*)
-  or build it from the PlatformIO sidebar (*Project Tasks → ex0x_… → uno → General → Build*).
-- Wokwi: the first `F1` → **Wokwi: Start Simulator** asks which `wokwi.toml` to use.
-  To switch to another example later: `F1` → **Wokwi: Select Config File**.
+Open the workspace file of one example: *File → Open Workspace from File… →
+`ex01_tasks_priorities/ex01_tasks_priorities.code-workspace`* (or double-click the file;
+*File → Open Folder… → `ex01_tasks_priorities`* works as well).
+Each workspace contains exactly one example, so PlatformIO, Wokwi and Cargo find their
+config files (`platformio.ini`, `wokwi.toml`, `Cargo.toml`) in the root without asking which project is meant,
+and VS Code recommends only the extensions this example needs.
+To work on two examples at the same time, open each in its own VS Code window.
 
 ### 2. Build
 
@@ -380,7 +378,6 @@ wokwi-cli --timeout 5000 .  # simulate 5 s (needs WOKWI_CLI_TOKEN from https://w
 | Simulation stalls | Simulator tab hidden: bring it to the front |
 | No `wokwi.vcd` | The file is written only when the simulation is stopped |
 | `Arduino_FreeRTOS.h: No such file` | The example was moved: `lib_deps` in `platformio.ini` is a path relative to the example folder |
-| Wrong example simulated in the multi-folder workspace | `F1` → **Wokwi: Select Config File** |
 | `F5` fails: *Unable to start debugging* / connection refused | Start Wokwi first with **Start Simulator and Wait for Debugger**; check that the port in `launch.json` matches `gdbServerPort` in `wokwi.toml` |
 | `F5` fails: `avr-gdb` not found | Install `avr-gdb` or set the full path in `miDebuggerPath` |
 | `F5` fails: *Failed to find thread 1 for break event* | `avr-gdb` too old (Arduino IDE / PlatformIO): use a current one, see [Prerequisites](#prerequisites) |
