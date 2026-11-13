@@ -130,7 +130,37 @@ if (best >= 0)   vTaskPrioritySet(jobs[best].task, 2);
   \begin{itemize}
     \item The chosen job has priority 2, all other workers priority 1.
     \item Time slicing: nothing chosen, FreeRTOS rotates the workers at every tick.
-    \item DIP switches 1/2: OFF/OFF time slicing, ON/OFF RM, OFF/ON SRTF, ON/ON EDF.
+    \item DIP switches 1/2: OFF/OFF time slicing, ON/OFF RM, OFF/ON SRTF, ON/ON EDF. Switch 3: task set 2.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Example: where RM fails and EDF does not}
+  Task set 2 (switch 3): A $T = 80$\,ms, $C = 30$\,ms; B $T = 112$\,ms, $C = 60$\,ms; $U = 91\,\%$.
+  \begin{center}
+  \begin{tikzpicture}[x=0.058cm, y=1cm, font=\scriptsize]
+    \colorlet{Acol}{blue!35}\colorlet{Bcol}{orange!50}
+    \foreach \y/\name in {1.15/RM, 0/EDF} {
+      \node[anchor=east, font=\small] at (-3,\y+0.25) {\name};
+      \draw[gray] (0,\y) -- (224,\y);
+      \foreach \d in {80,160} \draw[thick, blue!70!black, -{Stealth}] (\d,\y+0.9) -- (\d,\y+0.5);
+      \foreach \d in {112,224} \draw[thick, orange!80!black, -{Stealth}] (\d,\y+0.9) -- (\d,\y+0.5);
+    }
+    \job{1.15}{0}{31}{A}\job{1.15}{31}{80}{B}\job{1.15}{80}{111}{A}\job{1.15}{112}{160}{B}
+    \job{1.15}{160}{191}{A}\job{1.15}{191}{203}{B}
+    \job{0}{0}{31}{A}\job{0}{31}{92}{B}\job{0}{92}{123}{A}\job{0}{123}{184}{B}\job{0}{184}{215}{A}
+    \node[red!80!black, anchor=south west, font=\scriptsize\bfseries] at (113,1.65) {B missed};
+    \foreach \t in {0,16,...,224} {
+      \draw (\t,0) -- (\t,-0.1) node[below] {\t};
+    }
+    \node[anchor=west] at (227,-0.3) {ms};
+  \end{tikzpicture}
+  \end{center}
+  \begin{itemize}
+    \small
+    \item Arrows: deadline = next release of A (blue) and B (orange).
+    \item RM: at 80\,ms A preempts B because of its shorter period, although B's deadline (112) is nearer than A's (160). B has had 49 of 60\,ms.
+    \item EDF: B finishes first, A still meets its deadline. Measured: B misses 2 of 10 with RM, none with EDF.
+    \item Response time test for RM: $R_B = 60 + \lceil R_B/80 \rceil \cdot 30 = 120\,\text{ms} > 112\,\text{ms}$.
   \end{itemize}
 \end{frame}
 
@@ -140,6 +170,8 @@ if (best >= 0)   vTaskPrioritySet(jobs[best].task, 2);
 FreeRTOS has no SRTF or EDF scheduler. Listing~\ref{lst:ex22} emulates the policies on top of the fixed priorities: the task Sched has the highest priority and runs at every tick and whenever a job has finished. It releases the jobs, checks the deadlines and gives the task of the chosen job priority~2; all other workers have priority~1 and cannot run as long as the chosen one is ready. For time slicing Sched chooses nothing: the three workers share priority~1, and FreeRTOS switches to the next one at every tick (\texttt{configUSE\_TIME\_SLICING}). A job that is not finished at its deadline is counted and dropped. The DIP switches select the policy while the simulation runs.
 
 At the ticks $16k$ all three jobs are released together (the critical instant). With time slicing A, B and C take turns of 16\,ms; after 64\,ms A has had only 32 of its 36\,ms and misses its deadline. With SRTF the short jobs B (20\,ms) and C (24\,ms) run first, A starts after 44\,ms and misses its deadline as well, although the average response time is the best of all policies (35\,ms): SRTF is a good policy for throughput, not for deadlines. With RM A runs at the start of each of its periods, B finishes after 57\,ms and C, preempted once by A, after 119\,ms (calculated: 36, 56 and 116\,ms; the difference is the overhead of the tick interrupt and of Sched). EDF produces the same schedule here, because with these periods the nearest deadline always belongs to the task with the shortest period.
+
+DIP switch~3 selects a second task set, for which RM is not sufficient: A with $T = 80$\,ms, $C = 30$\,ms and B with $T = 112$\,ms, $C = 60$\,ms, together 91\,\% ($30/80 + 60/112$). The periods are not multiples of each other. At 80\,ms the second job of A is released while B still needs 11\,ms. RM gives A the processor because of its shorter period, although A has time until 160\,ms and B only until 112\,ms: B misses its deadline by 10\,ms, once in each hyperperiod of 560\,ms. The response time test predicts it: $R_B = 60 + \lceil R_B/80 \rceil \cdot 30$ converges to 120\,ms, more than the 112\,ms allowed. EDF compares the deadlines at every release, lets B finish first and meets all deadlines, as it must for $U \le 1$. The price is the dynamic priority: under EDF the response time of A varies between 31 and 55\,ms, under RM it is always 31\,ms. (Time slicing and SRTF happen to meet all deadlines of this task set; this is not guaranteed by either policy.)
 }
 
 \subsection{Scheduling policies in practice}

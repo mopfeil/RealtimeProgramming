@@ -2,12 +2,20 @@
 // rate monotonic (RM), shortest remaining time first (SRTF) and earliest
 // deadline first (EDF).
 //
-// Three periodic tasks, deadline = end of the period (1 tick = 16 ms):
+// Periodic tasks, deadline = end of the period (1 tick = 16 ms).
+// Task set 1 (DIP switch 3 OFF):
 //   A  period  4 ticks ( 64 ms)  36 ms CPU time per job   U = 56 %
 //   B  period  8 ticks (128 ms)  20 ms                    U = 16 %
 //   C  period 16 ticks (256 ms)  24 ms                    U =  9 %
 // Total 81 %: more than the Liu & Layland bound for three tasks (78 %), but
 // the response time test shows that RM meets all deadlines.
+// Task set 2 (DIP switch 3 ON): where RM fails and EDF does not
+//   A  period  5 ticks ( 80 ms)  30 ms                    U = 38 %
+//   B  period  7 ticks (112 ms)  60 ms                    U = 54 %
+// Total 91 %: more than the bound for two tasks (83 %), and here RM does
+// miss: A has the shorter period and always runs first, so B gets only
+// 52 ms before its first deadline. EDF lets B finish first whenever the
+// deadline of B is the nearer one, and meets all deadlines (U <= 100 %).
 //
 // FreeRTOS itself only knows fixed priorities and time slicing. The other
 // policies are emulated by the task Sched (priority 3, the highest). It runs
@@ -18,8 +26,9 @@
 //   - chooses the job that may run and gives its task priority 2; all other
 //     workers have priority 1 and do not run as long as the chosen one does.
 //
-// DIP switches 1 and 2 select the policy (read every 16 ticks, when all
-// three periods start together):
+// DIP switches 1 and 2 select the policy (switches are read when all
+// periods start together: every 16 ticks in set 1, every 35 ticks in set 2).
+// The results below are those of task set 1:
 //   OFF OFF  time slicing: all workers have priority 1, Sched chooses
 //            nothing. FreeRTOS switches to the next ready worker at every
 //            tick (round robin). Fair, but blind for deadlines: A gets at
@@ -33,8 +42,9 @@
 //   ON  ON   EDF: the ready job with the nearest deadline runs. All
 //            deadlines are met.
 //
-// Serial (115200): every 64 ticks one line per task with the jobs done and
-// missed and the average and longest response time (release to finish).
+// Serial (115200): every 64 ticks (set 2: 70 ticks) one line per task with
+// the jobs done and missed and the average and longest response time
+// (release to finish).
 //
 // Logic analyzer (HIGH while the task runs):
 //   D0 = pin 10 A     D1 = pin 11 B     D2 = pin 12 C
@@ -46,15 +56,26 @@
 
 const uint8_t PIN_SW1   = 2;        // DIP switch 1, ON = LOW
 const uint8_t PIN_SW2   = 3;        // DIP switch 2, ON = LOW
+const uint8_t PIN_SW3   = 4;        // DIP switch 3, ON = LOW: task set 2
 const uint8_t PIN_SCHED = 9;        // trace pins, driven by the scheduler
 const uint8_t PIN_IDLE  = 8;
 const uint8_t PIN_MISS  = 13;
 
 enum Policy : uint8_t { SLICE, RM, SRTF, EDF };
 
-const uint8_t    N = 3;
-const TickType_t HYPERPERIOD  = 16;  // all periods start together
-const TickType_t REPORT_TICKS = 64;
+const uint8_t N = 3;
+
+struct TaskSet {
+  uint8_t tasks;                    // number of tasks used
+  uint8_t hyperperiod;              // ticks until all periods start together
+  uint8_t reportEvery;              // hyperperiods per report
+  struct { uint8_t period, cost; } task[N];   // ticks, ms of CPU time
+};
+
+const TaskSet SETS[2] = {
+  { 3, 16, 4, { { 4, 36 }, { 8, 20 }, { 16, 24 } } },
+  { 2, 35, 2, { { 5, 30 }, { 7, 60 } } },
+};
 
 struct Stats {
   uint8_t  done, missed;
@@ -65,28 +86,26 @@ struct Stats {
 struct Job {
   const char      name;
   const uint8_t   pin;              // trace pin
-  const TickType_t period;          // in ticks, deadline = period
-  const uint8_t   cost;             // CPU time per job in ms
+  uint8_t         period;           // in ticks, deadline = period
+  uint8_t         cost;             // CPU time per job in ms
   volatile uint8_t remaining;       // ms of CPU time left, 0 = no job
-  TickType_t      deadline;         // absolute, in ticks
+  TickType_t      deadline;         // absolute, in ticks = next release
   uint32_t        releasedUs;
   Stats           stats;
   TaskHandle_t    task;
 };
 
-Job jobs[N] = {
-  { 'A', 10,  4, 36 },
-  { 'B', 11,  8, 20 },
-  { 'C', 12, 16, 24 },
-};
+Job jobs[N] = { { 'A', 10 }, { 'B', 11 }, { 'C', 12 } };
 
 TaskHandle_t schedTask;
 Policy  policy  = SLICE;
+uint8_t setNo   = 0;                // index into SETS
 int8_t  chosen  = -1;               // index of the job with priority 2
 
 // Copy of the statistics for loop(), which prints them in the idle time
 Stats   report[N];
 Policy  reportPolicy;
+uint8_t reportSet;
 volatile bool reportReady = false;
 
 // One periodic task: wait for the release, then burn the CPU time of the job
@@ -145,37 +164,71 @@ void dispatch(TickType_t now) {
   chosen = best;
 }
 
+Policy readPolicy() {
+  return (Policy)((digitalRead(PIN_SW1) == LOW ? 1 : 0) |
+                  (digitalRead(PIN_SW2) == LOW ? 2 : 0));
+}
+
+uint8_t readSet() {
+  return digitalRead(PIN_SW3) == LOW ? 1 : 0;
+}
+
+// Switch to the task set chosen with switch 3 and start a job of each task
+void loadSet(TickType_t now) {
+  setNo = readSet();
+  const TaskSet &set = SETS[setNo];
+  for (uint8_t i = 0; i < N; i++) {
+    Job &j = jobs[i];
+    if (i >= set.tasks) {           // task not used in this set
+      j.remaining = 0;
+      continue;
+    }
+    j.period = set.task[i].period;
+    j.cost   = set.task[i].cost;
+    if (j.remaining == 0) xTaskNotifyGive(j.task);
+    j.remaining  = j.cost;
+    j.deadline   = now + j.period;
+    j.releasedUs = micros();
+  }
+}
+
+// Start of a report interval: read the policy, clear the statistics
 void startPolicy() {
   if (chosen >= 0) vTaskPrioritySet(jobs[chosen].task, 1);
   chosen = -1;
-  policy = (Policy)((digitalRead(PIN_SW1) == LOW ? 1 : 0) |
-                    (digitalRead(PIN_SW2) == LOW ? 2 : 0));
+  policy = readPolicy();
   for (uint8_t i = 0; i < N; i++) jobs[i].stats = Stats();
 }
 
 void schedulerTask(void *pv) {
   TickType_t tick = 0;              // ticks handled so far
+  uint8_t inHyper = 0;              // ticks since all periods started together
+  uint8_t hypers  = 0;              // hyperperiods since the last report
   startPolicy();
-  for (uint8_t i = 0; i < N; i++) release(jobs[i], 0);
+  loadSet(0);
   for (;;) {
     dispatch(tick);
     ulTaskNotifyTake(pdTRUE, 1);    // until the next tick or a job finishes
-    TickType_t now = xTaskGetTickCount();
-    while (tick != now) {
-      tick++;
-      digitalWrite(PIN_MISS, LOW);
-      if (tick % REPORT_TICKS == 0) {
-        for (uint8_t i = 0; i < N; i++) report[i] = jobs[i].stats;
-        reportPolicy = policy;
-        reportReady = true;
-      }
-      if (tick % HYPERPERIOD == 0) {
-        bool changed = policy != (Policy)((digitalRead(PIN_SW1) == LOW ? 1 : 0) |
-                                          (digitalRead(PIN_SW2) == LOW ? 2 : 0));
-        if (changed || tick % REPORT_TICKS == 0) startPolicy();
-      }
-      for (uint8_t i = 0; i < N; i++)
-        if (tick % jobs[i].period == 0) release(jobs[i], tick);
+    if (xTaskGetTickCount() == tick) continue;  // a job finished: dispatch
+
+    tick++;
+    digitalWrite(PIN_MISS, LOW);
+    for (uint8_t i = 0; i < SETS[setNo].tasks; i++)
+      if (jobs[i].deadline == tick) release(jobs[i], tick);
+
+    if (++inHyper < SETS[setNo].hyperperiod) continue;
+    inHyper = 0;                    // all periods have just started together
+    bool reportNow = ++hypers >= SETS[setNo].reportEvery;
+    if (reportNow) {
+      for (uint8_t i = 0; i < N; i++) report[i] = jobs[i].stats;
+      reportPolicy = policy;
+      reportSet = setNo;
+      reportReady = true;
+    }
+    if (reportNow || policy != readPolicy() || setNo != readSet()) {
+      hypers = 0;
+      startPolicy();
+      if (setNo != readSet()) loadSet(tick);
     }
   }
 }
@@ -184,6 +237,7 @@ void setup() {
   Serial.begin(115200);
   pinMode(PIN_SW1, INPUT_PULLUP);
   pinMode(PIN_SW2, INPUT_PULLUP);
+  pinMode(PIN_SW3, INPUT_PULLUP);
   pinMode(PIN_SCHED, OUTPUT);
   pinMode(PIN_IDLE, OUTPUT);
   pinMode(PIN_MISS, OUTPUT);
@@ -213,13 +267,17 @@ void loop() {
   taskENTER_CRITICAL();
   memcpy(s, report, sizeof s);
   Policy p = reportPolicy;
+  uint8_t n = SETS[reportSet].tasks;
+  uint8_t setShown = reportSet + 1;
   reportReady = false;
   taskEXIT_CRITICAL();
 
-  Serial.println(p == SLICE ? F("--- time slicing") : p == RM ? F("--- RM")
-               : p == SRTF  ? F("--- SRTF")         : F("--- EDF"));
+  Serial.print(p == SLICE ? F("--- time slicing") : p == RM ? F("--- RM")
+             : p == SRTF  ? F("--- SRTF")         : F("--- EDF"));
+  Serial.print(F(", task set "));
+  Serial.println(setShown);
   uint16_t sum = 0, done = 0, missed = 0;
-  for (uint8_t i = 0; i < N; i++) {
+  for (uint8_t i = 0; i < n; i++) {
     Serial.print(jobs[i].name);
     Serial.print(F(": done "));
     Serial.print(s[i].done);

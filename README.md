@@ -63,7 +63,7 @@ Examples:
   - `ex18_c_isr_shared`, `ex19_py_irq`, `ex20_rust_isr`: PWM edge → interrupt → 8-word sample shared with the main loop; torn copies, long vs. short critical section, interrupt latency (read from the PWM counter); MicroPython hard/soft IRQ and allocation in the handler; Rust `Mutex<RefCell<_>>` vs. `static mut`, and `examples/race.rs`, which the compiler rejects
   - C and MicroPython (`sketch.ino`/`main.py`) also run on wokwi.com (Pi Pico project). The Rust examples need a local build and exist only in `examples_vscode/`.
 - `ex21_active_object`: realtime patterns (chapter `10-rt-patterns.tex`): ISR → lock-free ring buffer → active object (event-driven state machine) vs. a blocking sequence with `vTaskDelay()`; emergency stop response 0 ms vs. several seconds
-- `ex22_scheduling_policies`: scheduling (chapter `07-scheduling.tex`): the same three periodic tasks under FreeRTOS time slicing, rate monotonic, shortest remaining time first and EDF (DIP switches 1/2); the last three are emulated by a dispatcher task that changes the task priorities. Serial output: deadline misses and response times per task
+- `ex22_scheduling_policies`: scheduling (chapter `07-scheduling.tex`): the same three periodic tasks under FreeRTOS time slicing, rate monotonic, shortest remaining time first and EDF (DIP switches 1/2); DIP switch 3 selects a second task set (two tasks, 91 %) for which RM misses a deadline and EDF does not; the last three are emulated by a dispatcher task that changes the task priorities. Serial output: deadline misses and response times per task
 - `ex07_time_slicer`: binary time slicer without RTOS (TimerOne library), chapter `03-time-slicer.tex`. D0–D2 = pins 13/12/11 (slot jobs), D3 = pin 10 (ISR active); DIP switch 1 makes slot 2 longer than a time slice. Based on <https://wokwi.com/projects/414976138190111745>.
 
 ## EdSim51 examples (8051 assembler)
@@ -79,7 +79,7 @@ That CPU has no timer, interrupts or input pins, so the subroutine `tick` emulat
 Paste the file into the editor, edit `NWORK` (4 = short work, 25 = long work), press *Assemble* and *Run* (speed 256 Hz or more).
 The console shows a tick timeline (example 5) or SETPOINT plus a nesting-depth bar (example 6).
 
-> Status of `ex22` (2026-11-13): built with PlatformIO and run with wokwi-cli in all four switch settings; the numbers in chapter 7 come from these runs. Not yet run inside the VS Code extension or on wokwi.com.
+> Status of `ex22` (2026-11-13): built with PlatformIO and run with wokwi-cli in all eight settings of switches 1–3; the numbers in chapter 7 come from these runs. Not yet run inside the VS Code extension or on wokwi.com.
 >
 > Status of `ex15`–`ex21` (2026-11-10): built with PlatformIO / cargo / `make_uf2.py` and run with wokwi-cli (Wokwi simulation API) in the switch settings described in the chapters; the numbers in the chapters come from these runs. Not yet run inside the VS Code extension or on wokwi.com.
 >

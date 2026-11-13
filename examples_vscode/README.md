@@ -319,8 +319,8 @@ Logic analyzer: D0 = controller task, D1 = emergency button, D2 = car red.
 
 ## Scheduling policies (ex22)
 
-`ex22_scheduling_policies` (Uno, FreeRTOS, chapter 7): three periodic tasks, deadline = end of the period
-(1 tick = 16 ms):
+`ex22_scheduling_policies` (Uno, FreeRTOS, chapter 7): periodic tasks, deadline = end of the period
+(1 tick = 16 ms). Task set 1 (DIP switch 3 OFF):
 
 | Task | Period | CPU time per job |
 |------|--------|------------------|
@@ -344,7 +344,19 @@ Serial output every 64 ticks (about 1 s): jobs done and missed, average and long
 Logic analyzer: D0–D2 = A, B, C (pins 10–12), D3 = Sched (pin 9), D4 = Idle (pin 8),
 D5 = deadline missed (pin 13, HIGH for one tick, also the LED).
 
-What to look for in the waveform, starting at a tick 16k (all three jobs released):
+DIP switch 3 selects task set 2, where RM fails and EDF does not: A 5 ticks (80 ms) / 30 ms, B 7 ticks (112 ms) / 60 ms,
+total 91 %. Results per 70 ticks (two hyperperiods of 35 ticks), measured in Wokwi:
+
+| Policy (switch 3 ON) | Result |
+|----------------------|--------|
+| time slicing | no miss (by chance, not guaranteed) |
+| rate monotonic | B misses 2 of 10 deadlines: at 80 ms A preempts B, which still needs 11 ms until its deadline at 112 ms |
+| shortest remaining time first | no miss (by chance, not guaranteed) |
+| earliest deadline first | no miss; response of A 31–55 ms instead of always 31 ms |
+
+A change of switch 3 takes effect when all periods of the current set start together (every 16 or 35 ticks).
+
+What to look for in the waveform of task set 1, starting at a tick 16k (all three jobs released):
 
 - Time slicing: A, B, C take turns, 16 ms each. After 64 ms A has had only 32 of its 36 ms: miss.
 - RM: A runs its 36 ms at the start of each of its periods, B and C fill the gaps. C is preempted by A and finishes after 119 ms.
