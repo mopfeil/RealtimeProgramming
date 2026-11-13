@@ -138,7 +138,25 @@ if (xSemaphoreTake(ev, pdMS_TO_TICKS(500)) == pdTRUE) {
 \end{frame}
 
 \begin{frame}[fragile]{Wokwi example 2: ISR $\rightarrow$ semaphore $\rightarrow$ task}
-  \wokwiexample{ex02_isr_semaphore}{Button interrupt wakes a task}{lst:ex02}
+\iftoggle{slides}{%
+  \begin{columns}[T]
+    \begin{column}{0.56\textwidth}
+      \lstinputlisting[basicstyle=\ttfamily\fontsize{6.5}{7.5}\selectfont,linerange={11-17,19-25},numbers=none,showstringspaces=false]{examples/ex02_isr_semaphore/sketch.ino}
+    \end{column}
+    \begin{column}{0.42\textwidth}
+      \small
+      \begin{itemize}
+        \item Button on pin 2 (INT0), LED on pin 12.
+        \item The ISR only gives the semaphore; the task does the work.
+        \item \texttt{taskYIELD()}: the woken task runs directly after the ISR, not at the next tick.
+        \item Logic analyzer: D0 = ISR, D1 = task. Measure the time from the ISR to the task.
+        \item Try: remove \texttt{taskYIELD()} and measure again.
+      \end{itemize}
+    \end{column}
+  \end{columns}
+}{%
+  \wokwiexample{ex02_isr_semaphore}{Button interrupt wakes a task}{lst:ex02}%
+}
 \end{frame}
 
 \scriptonly{%

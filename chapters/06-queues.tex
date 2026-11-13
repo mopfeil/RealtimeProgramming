@@ -21,7 +21,25 @@ xQueueSendFromISR(q, &value, &woken);        // inside an ISR
 \end{frame}
 
 \begin{frame}[fragile]{Wokwi example 3: producer and consumer}
-  \wokwiexample{ex03_queue}{Producer/consumer with a queue}{lst:ex03}
+\iftoggle{slides}{%
+  \begin{columns}[T]
+    \begin{column}{0.56\textwidth}
+      \lstinputlisting[basicstyle=\ttfamily\fontsize{6.5}{7.5}\selectfont,linerange={10-18,20-27},numbers=none,showstringspaces=false]{examples/ex03_queue/sketch.ino}
+    \end{column}
+    \begin{column}{0.42\textwidth}
+      \small
+      \begin{itemize}
+        \item Queue of 4 \texttt{int}; Prod priority 1, Cons priority 2.
+        \item Prod sends every 3 ticks (48\,ms).
+        \item Logic analyzer (D0 = Prod, D1 = Cons): Cons preempts Prod inside \texttt{xQueueSend()} and takes the item at once.
+        \item \texttt{pdMS\_TO\_TICKS(15)} is 0 ticks: no delay at all.
+        \item Try: exchange the priorities and make Cons slower than Prod: the queue fills up.
+      \end{itemize}
+    \end{column}
+  \end{columns}
+}{%
+  \wokwiexample{ex03_queue}{Producer/consumer with a queue}{lst:ex03}%
+}
 \end{frame}
 
 \scriptonly{%

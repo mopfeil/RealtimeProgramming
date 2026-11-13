@@ -67,7 +67,25 @@ Internally, FreeRTOS keeps one ready list per priority level (\texttt{pxReadyTas
 
 \subsection{Example}
 \begin{frame}[fragile]{Wokwi example 1: two tasks, two priorities}
-  \wokwiexample{ex01_tasks_priorities}{Two periodic tasks, traced by the scheduler}{lst:ex01}
+\iftoggle{slides}{%
+  \begin{columns}[T]
+    \begin{column}{0.56\textwidth}
+      \lstinputlisting[basicstyle=\ttfamily\fontsize{6.5}{7.5}\selectfont,linerange={16-23,25-32,38-39},numbers=none,showstringspaces=false]{examples/ex01_tasks_priorities/sketch.ino}
+    \end{column}
+    \begin{column}{0.42\textwidth}
+      \small
+      \begin{itemize}
+        \item Tick 16\,ms: A runs every 6 ticks (96\,ms), B every 3 ticks (48\,ms).
+        \item Logic analyzer: D0 = A, D1 = B, HIGH while the task runs.
+        \item Every second job of B is released while A runs: B starts about 4\,ms late.
+        \item \texttt{burn()} waits on \texttt{millis()}: the time also passes while the task is preempted.
+        \item Try: exchange the priorities.
+      \end{itemize}
+    \end{column}
+  \end{columns}
+}{%
+  \wokwiexample{ex01_tasks_priorities}{Two periodic tasks, traced by the scheduler}{lst:ex01}%
+}
 \end{frame}
 
 \scriptonly{%
