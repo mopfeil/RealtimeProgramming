@@ -80,12 +80,105 @@
   \end{center}
 \end{frame}
 
+% one job in the timeline: lane, start, end, task
+\providecommand{\job}[4]{%
+  \fill[#4col] (#2,#1) rectangle (#3,#1+0.5);
+  \draw (#2,#1) rectangle (#3,#1+0.5);
+  \node at ({(#2+#3)/2},#1+0.25) {#4};}
+\begin{frame}{Example: the schedules on the logic analyzer}
+  All three jobs are released at $t = 0$ (ticks $16k$). Deadlines of A at 64 and 128\,ms.
+  \begin{center}
+  \begin{tikzpicture}[x=0.092cm, y=1cm, font=\scriptsize]
+    \colorlet{Acol}{blue!35}\colorlet{Bcol}{orange!50}\colorlet{Ccol}{green!40}
+    % lanes: 2.4 time slicing, 1.2 SRTF, 0 RM
+    \foreach \y/\name in {2.4/{Time slicing}, 1.2/SRTF, 0/{RM, EDF}} {
+      \node[anchor=east, font=\small] at (-2,\y+0.25) {\name};
+      \draw[gray] (0,\y) -- (128,\y);
+      \foreach \d in {64,128} \draw[thick, -{Stealth}] (\d,\y+0.85) -- (\d,\y+0.5);
+    }
+    \job{2.4}{0}{16}{A}\job{2.4}{16}{32}{B}\job{2.4}{32}{48}{C}\job{2.4}{48}{64}{A}
+    \job{2.4}{64}{69}{B}\job{2.4}{69}{77}{C}\job{2.4}{77}{114}{A}
+    \job{1.2}{0}{21}{B}\job{1.2}{21}{45}{C}\job{1.2}{45}{64}{A}\job{1.2}{64}{101}{A}
+    \job{0}{0}{37}{A}\job{0}{37}{58}{B}\job{0}{58}{64}{C}\job{0}{64}{101}{A}\job{0}{101}{119}{C}
+    \foreach \y in {2.4,1.2} \node[red!80!black, anchor=south west, font=\scriptsize\bfseries] at (64,\y+0.5) {A missed};
+    \foreach \t in {0,16,...,128} {
+      \draw (\t,0) -- (\t,-0.1) node[below] {\t};
+    }
+    \node[anchor=west] at (130,-0.3) {ms};
+  \end{tikzpicture}
+  \end{center}
+  \begin{itemize}
+    \item Time slicing: A has had 32 of 36\,ms at its deadline. SRTF: A starts only after B and C.
+    \item A late job is dropped; the next job of A starts at 64\,ms.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}[fragile]{Example: emulating a policy on FreeRTOS}
+  Task \texttt{Sched} (priority 3) runs at every tick and when a job finishes:
+\begin{lstlisting}[basicstyle=\ttfamily\scriptsize]
+uint16_t key(const Job &j, TickType_t now) {   // smallest key runs
+  switch (policy) {
+    case RM:   return j.period;                // shortest period
+    case SRTF: return j.remaining;             // least work left
+    default:   return j.deadline - now;        // EDF: nearest deadline
+  }
+}
+...
+if (chosen >= 0) vTaskPrioritySet(jobs[chosen].task, 1);
+if (best >= 0)   vTaskPrioritySet(jobs[best].task, 2);
+\end{lstlisting}
+  \begin{itemize}
+    \item The chosen job has priority 2, all other workers priority 1.
+    \item Time slicing: nothing chosen, FreeRTOS rotates the workers at every tick.
+    \item DIP switches 1/2: OFF/OFF time slicing, ON/OFF RM, OFF/ON SRTF, ON/ON EDF.
+  \end{itemize}
+\end{frame}
+
 \scriptonly{%
 \wokwiexample{ex22_scheduling_policies}{The same task set under time slicing, RM, SRTF and EDF}{lst:ex22}
 
 FreeRTOS has no SRTF or EDF scheduler. Listing~\ref{lst:ex22} emulates the policies on top of the fixed priorities: the task Sched has the highest priority and runs at every tick and whenever a job has finished. It releases the jobs, checks the deadlines and gives the task of the chosen job priority~2; all other workers have priority~1 and cannot run as long as the chosen one is ready. For time slicing Sched chooses nothing: the three workers share priority~1, and FreeRTOS switches to the next one at every tick (\texttt{configUSE\_TIME\_SLICING}). A job that is not finished at its deadline is counted and dropped. The DIP switches select the policy while the simulation runs.
 
 At the ticks $16k$ all three jobs are released together (the critical instant). With time slicing A, B and C take turns of 16\,ms; after 64\,ms A has had only 32 of its 36\,ms and misses its deadline. With SRTF the short jobs B (20\,ms) and C (24\,ms) run first, A starts after 44\,ms and misses its deadline as well, although the average response time is the best of all policies (35\,ms): SRTF is a good policy for throughput, not for deadlines. With RM A runs at the start of each of its periods, B finishes after 57\,ms and C, preempted once by A, after 119\,ms (calculated: 36, 56 and 116\,ms; the difference is the overhead of the tick interrupt and of Sched). EDF produces the same schedule here, because with these periods the nearest deadline always belongs to the task with the shortest period.
+}
+
+\subsection{Scheduling policies in practice}
+\begin{frame}{Which policies are used today?}
+  \begin{center}\footnotesize
+  \begin{tabular}{@{}>{\raggedright\arraybackslash}p{3.4cm}>{\raggedright\arraybackslash}p{5.2cm}>{\raggedright\arraybackslash}p{5.0cm}@{}}
+    \toprule
+    Policy & Idea & Found in \\
+    \midrule
+    Fixed-priority preemptive & priorities from RM or deadline monotonic (shortest relative deadline first) & FreeRTOS, Zephyr, QNX, VxWorks, AUTOSAR Classic OS, Linux \texttt{SCHED\_FIFO}/\texttt{SCHED\_RR} \\
+    EDF with reservation & each task gets a budget per period; a task that overruns is throttled & Linux \texttt{SCHED\_DEADLINE}, Zephyr (\texttt{CONFIG\_SCHED\_DEADLINE}) \\
+    Time-triggered, table-driven & fixed table of time windows, computed offline & ARINC~653 partitions (avionics), AUTOSAR schedule tables, TSN time-aware shaper (IEEE~802.1Qbv) \\
+    Fair share & CPU time in proportion to a weight, no deadlines & Linux EEVDF (default since 6.6, successor of CFS) \\
+    \bottomrule
+  \end{tabular}
+  \end{center}
+  \begin{itemize}
+    \item Fixed priorities dominate in embedded systems: simple, predictable under overload (the low priorities suffer first), well-understood analysis.
+    \item Time-triggered where certification needs isolation between functions.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Current topics}
+  \begin{itemize}
+    \item \textbf{Realtime Linux}: \texttt{PREEMPT\_RT} is part of the mainline kernel since 6.12 (2024). Policies: \texttt{SCHED\_FIFO}, \texttt{SCHED\_RR} (fixed priorities), \texttt{SCHED\_DEADLINE} (EDF with budget: runtime, deadline, period).
+    \item \textbf{Reservation servers}: a budget per period for a group of tasks. Linux 6.12 uses a deadline server so that normal tasks are not starved by realtime tasks.
+    \item \textbf{Pluggable schedulers}: \texttt{sched\_ext} (Linux 6.12) loads a scheduling policy as a BPF program at run time. For throughput and latency of desktops and servers, not for hard realtime.
+    \item \textbf{Mixed criticality}: functions of different criticality on one processor. Budget enforcement (AUTOSAR timing protection) and time partitioning keep an overrun of a low-critical task away from the high-critical ones.
+    \item \textbf{Multicore}: \emph{partitioned} (each task fixed to one core, analysis per core) or \emph{global} (tasks migrate). Partitioned fixed-priority is the usual choice.
+    \item \textbf{Networks}: the same question for frames instead of tasks (TSN, time-aware shaper).
+  \end{itemize}
+\end{frame}
+
+\scriptonly{%
+The example task set shows why SRTF and time slicing are not used for realtime tasks, and why they are still the base of general-purpose schedulers: they optimise the average, not the worst case. The Linux default scheduler EEVDF (earliest eligible virtual deadline first) is a fair-share scheduler of this kind; its ``deadline'' is a virtual one, derived from the weight and the requested time slice of a task, not a deadline of the application. For realtime tasks Linux offers separate policies with a higher rank: \texttt{SCHED\_DEADLINE} above \texttt{SCHED\_FIFO}/\texttt{SCHED\_RR} above the normal tasks. \texttt{SCHED\_DEADLINE} combines EDF with the constant bandwidth server: a task declares a runtime per period, the kernel accepts it only if the total utilisation fits (admission test), and a task that uses more than its runtime is throttled until its next period. This solves the main weakness of plain EDF, the unpredictable behaviour under overload: with fixed priorities an overload hits the low priorities first, with plain EDF any task may miss its deadline.
+
+Zephyr schedules by fixed priority and can order the threads within one priority level by deadline (\texttt{CONFIG\_SCHED\_DEADLINE}, \texttt{k\_thread\_deadline\_set()}); threads can be cooperative (negative priority) or preemptive, with optional time slicing. Two further policies appear in textbooks: deadline monotonic, the generalisation of RM for deadlines shorter than the period, and least laxity first, which runs the job with the smallest difference between the time to its deadline and its remaining work; it is optimal like EDF on one processor, but causes many context switches and is rarely implemented.
+
+Sources: Linux kernel documentation \url{https://docs.kernel.org/scheduler/}, Zephyr scheduling \url{https://docs.zephyrproject.org/latest/kernel/services/scheduling/index.html}, A.~Burns and R.~Davis, \emph{Mixed Criticality Systems -- A Review}, \url{https://www.cs.york.ac.uk/~burns/review.pdf}.
 }
 
 \scriptonly{%
